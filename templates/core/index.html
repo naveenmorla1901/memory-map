@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Memory Map - Home{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>Memory Map API</h1>
+    <p>Welcome to the Memory Map application API interface.</p>
+</div>
+
+<div class="endpoints">
+    <h2>Available Endpoints</h2>
+    
+    <div class="endpoint">
+        <h3>Admin Interface</h3>
+        <p>Manage your application data</p>
+        <a href="/admin/" target="_blank">/admin/</a>
+    </div>
+
+    <div class="endpoint">
+        <h3>API Documentation</h3>
+        <p>Interactive API documentation</p>
+        <a href="/swagger/" target="_blank">/swagger/</a>
+    </div>
+
+    <div class="endpoint">
+        <h3>Authentication</h3>
+        <p>User authentication endpoints</p>
+        <a href="/api/auth/login/" target="_blank">/api/auth/login/</a>
+    </div>
+
+    <div class="endpoint">
+        <h3>Memory Maps</h3>
+        <p>Access and manage memory maps</p>
+        <a href="/api/core/memory-maps/" target="_blank">/api/core/memory-maps/</a>
+    </div>
+</div>
+{% endblock %}
