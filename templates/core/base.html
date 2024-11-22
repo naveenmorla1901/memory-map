@@ -1,0 +1,35 @@
+<!-- templates/core/base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Memory Map{% endblock %}</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Custom CSS -->
+    <style>
+        /* Add any custom styles here */
+    </style>
+</head>
+<body class="bg-gray-50">
+    <header class="bg-white shadow">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center">
+                    <a href="/" class="text-xl font-bold text-gray-900">Memory Map</a>
+                </div>
+                <div>
+                    <a href="/docs/" class="text-blue-600 hover:text-blue-800">API Documentation</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main role="main" class="min-h-screen">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

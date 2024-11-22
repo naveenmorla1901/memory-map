@@ -1,0 +1,249 @@
+Note: OpenStreetMap is serving the tile images
+Please note that tile images are coming from the OpenStreetMap servers. Although OSM are supporting this kind of usage at the moment, we offer no guarantees. There may be downtime (planned or unplanned), and tile URLs may change.
+
+If you are expecting heavy user load, then you should discuss with everyone first (Contact). You should consider following the other instructions on creating your own tiles, or set up your own squid cache for tiles. This will reduce the dependency for you, and will ease bandwidth usage for the OSM servers.
+
+Of course the images themselves (our maps) change over time too, not necessarily for the better.
+
+Instructions
+First, create a folder to work in. Download a stable release of OpenLayers from openlayers.org (note: this is a link to the older version 2 which those examples are based on), and uncompress it. Copy the `OpenLayers.js` file and the `theme` directory to the base of the folder. Then, copy one of the following into a new HTML file, and view it in a browser.
+
+The smallest example
+<!DOCTYPE HTML>
+<title>OpenLayers Simplest Example</title>
+<div id="demoMap" style="height:250px"></div>
+<script src="OpenLayers.js"></script>
+<script>
+    map = new OpenLayers.Map("demoMap");
+    map.addLayer(new OpenLayers.Layer.OSM());
+    map.zoomToMaxExtent();
+</script>
+The code shows how you
+
+initialise a Map object with a DIVs id
+add a OpenStreetMap Layer
+force the tiles to show by calling zoomToMaxExtent, you could also call zoomToExtent, but for that you need a bounds object in the correct projection...
+A little more extensive example
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <title>OpenLayers Demo</title>
+    <style type="text/css">
+      html, body, #basicMap {
+          width: 100%;
+          height: 100%;
+          margin: 0;
+      }
+    </style>
+    <script src="OpenLayers.js"></script>
+    <script>
+      function init() {
+        map = new OpenLayers.Map("basicMap");
+        var mapnik         = new OpenLayers.Layer.OSM();
+        var fromProjection = new OpenLayers.Projection("EPSG:4326");   // Transform from WGS 1984
+        var toProjection   = new OpenLayers.Projection("EPSG:900913"); // to Spherical Mercator Projection
+        var position       = new OpenLayers.LonLat(13.41,52.52).transform( fromProjection, toProjection);
+        var zoom           = 15; 
+
+        map.addLayer(mapnik);
+        map.setCenter(position, zoom );
+      }
+    </script>
+  </head>
+  <body onload="init();">
+    <div id="basicMap"></div>
+  </body>
+</html>
+Extensions
+Other tile sets
+If you are deploying your own tile images (for example, with Mapnik), just use the layer definition below:
+
+ var newLayer = new OpenLayers.Layer.OSM("New Layer", "URL_TO_TILES/${z}/${x}/${y}.png", {numZoomLevels: 19});
+ map.addLayer(newLayer);
+The addition of /${z}/${x}/${y}.png URL template has been required since the 27th June 2009.
+
+Change the url and numZoomLevels as appropriate.
+
+Restricting the bounds & zoom levels
+This restricts the map to showing the area around Oxford, and zoom levels 13-16. To add lower zooms, add new numbers in the resolutions array (each one is double the next).
+
+      var fromProjection = new OpenLayers.Projection("EPSG:4326"); // transform from WGS 1984
+      var toProjection = new OpenLayers.Projection("EPSG:900913"); // to Spherical Mercator Projection
+      var extent = new OpenLayers.Bounds(-1.32,51.71,-1.18,51.80).transform(fromProjection,toProjection);
+      function init() {
+        var options = {
+          restrictedExtent : extent,
+          controls: [
+            new OpenLayers.Control.Navigation(),
+            new OpenLayers.Control.PanZoomBar(),
+            new OpenLayers.Control.Attribution()
+          ]
+        };
+        map = new OpenLayers.Map("Map", options);
+        var newLayer = new OpenLayers.Layer.OSM(
+          "New Layer", 
+          "URL_TO_TILES/${z}/${x}/${y}.png", 
+          {zoomOffset: 13, resolutions: [19.1092570678711,9.55462853393555,4.77731426696777,2.38865713348389]}
+        );
+        map.addLayer(newLayer);
+        map.setCenter(new OpenLayers.LonLat(-1.25,51.75).transform(fromProjection,toProjection), 0); // 0=relative zoom level
+      }
+Altering the location of the attribution text and scale line
+You can override the location of the attribution text and scale line, and the font used, by adding the following lines in the style section
+
+      div.olControlAttribution, div.olControlScaleLine {
+          font-family: Verdana;
+          font-size: 0.7em;
+          bottom: 3px;
+      }
+
+
+Add Markers
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>OpenLayers Simplest Example</title>
+</head>
+<body>
+<div id="Map" style="height:250px"></div>
+<script src="OpenLayers.js"></script>
+<script>
+    var lat            = 47.35387;
+    var lon            = 8.43609;
+    var zoom           = 18;
+
+    var fromProjection = new OpenLayers.Projection("EPSG:4326");   // Transform from WGS 1984
+    var toProjection   = new OpenLayers.Projection("EPSG:900913"); // to Spherical Mercator Projection
+    var position       = new OpenLayers.LonLat(lon, lat).transform( fromProjection, toProjection);
+
+    map = new OpenLayers.Map("Map");
+    var mapnik         = new OpenLayers.Layer.OSM();
+    map.addLayer(mapnik);
+
+    var markers = new OpenLayers.Layer.Markers( "Markers" );
+    map.addLayer(markers);
+    markers.addMarker(new OpenLayers.Marker(position));
+
+    map.setCenter(position, zoom);
+</script>
+</body>
+</html>
+Use Proj4js for other transformations
+The example lets you use WGS84 coordinates to navigate in a sphericalMercator projected OSM map. If your coordinates are in a different projection, you can add Proj4js to perform reprojections.
+
+Add the proj4js.js script from http://svn.osgeo.org/metacrs/proj4js/trunk/lib/proj4js-combined.js to your page (after the OpenLayers lib!)
+
+Add your projection defintion (these are obtainable from the Proj4 project, you need the a record from \proj\nad\epsg
+
+See http://svn.osgeo.org/metacrs/proj4js/trunk/lib/defs for examples
+
+Example for EPSG:28992 (new RD)
+
+Proj4js.defs["EPSG:28992"] = "+title=Amersfoort / RD New +proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 +k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel +units=m +no_defs";
+
+Then, you can use EPSG:28992 coordinates and this epsg code in the transformfunction instead of WGS84
+
+
+like so:
+
+map.setCenter(
+    new OpenLayers.LonLat(155000,465000) // Center of the map
+        .transform(
+            new OpenLayers.Projection("EPSG:28992"), // transform from new RD 
+            new OpenLayers.Projection("EPSG:900913") // to Spherical Mercator Projection
+        ),
+    15); // Zoom level
+
+This is a simple example of adding a marker to an OpenLayers map.
+
+Example
+
+Here is the code that is needed (Copy the following into a new HTML file, and view it in a browser.) :
+
+<html><body>
+  <div id="mapdiv"></div>
+  <script src="http://www.openlayers.org/api/OpenLayers.js"></script>
+  <script>
+    map = new OpenLayers.Map("mapdiv");
+    map.addLayer(new OpenLayers.Layer.OSM());
+
+    var lonLat = new OpenLayers.LonLat( -0.1279688 ,51.5077286 )
+          .transform(
+            new OpenLayers.Projection("EPSG:4326"), // transform from WGS 1984
+            map.getProjectionObject() // to Spherical Mercator Projection
+          );
+          
+    var zoom=16;
+
+    var markers = new OpenLayers.Layer.Markers( "Markers" );
+    map.addLayer(markers);
+    
+    markers.addMarker(new OpenLayers.Marker(lonLat));
+    
+    map.setCenter (lonLat, zoom);
+  </script>
+</body></html>
+This uses the same lonLat object to place a marker and then to also centre the map. You can add further markers using markers.addMarker(new OpenLayers.Marker(newLonLat)); if you define newLonLat to be another OpenLayers.LonLat object
+
+iframe approach
+There is an even simpler HTML fragment to use on your website, using an <iframe> tag. You can easily get the necessary HTML using the Export tab, and choosing the "embeddable HTML" option. The iframe approach is rather limited. If you're interested in trying out additional javascript tricks then the OpenLayers example above is a better starting point.
+
+OpenLayers example with marker and popup
+Here is an OpenLayers example with marker and popup. This could be the typical "you can find us here" example...
+
+http://dev.openlayers.org/examples/osm-marker-popup.html
+
+The files
+index.html
+Copy the following into a new HTML file and name it index.html.
+
+<html><body>
+  <div id="mapdiv"></div>
+  <script src="http://www.openlayers.org/api/OpenLayers.js"></script>
+  <script>
+    map = new OpenLayers.Map("mapdiv");
+    map.addLayer(new OpenLayers.Layer.OSM());
+       
+    var pois = new OpenLayers.Layer.Text( "My Points",
+                    { location:"./textfile.txt",
+                      projection: map.displayProjection
+                    });
+    map.addLayer(pois);
+ // create layer switcher widget in top right corner of map.
+    var layer_switcher= new OpenLayers.Control.LayerSwitcher({});
+    map.addControl(layer_switcher);
+    //Set start centrepoint and zoom    
+    var lonLat = new OpenLayers.LonLat( 9.5788, 48.9773 )
+          .transform(
+            new OpenLayers.Projection("EPSG:4326"), // transform from WGS 1984
+            map.getProjectionObject() // to Spherical Mercator Projection
+          );
+    var zoom=11;
+    map.setCenter (lonLat, zoom);  
+    
+  </script>
+</body></html>
+Attention: Don't work normally with <!DOCTYPE html>, see the discussion page
+
+textfile.txt
+Then create a second file called textfile.txt. It is a tab separated text file, each column being defined in the first line. An example of this file could be:
+
+lat	lon	title	description	icon	iconSize	iconOffset
+48.9459301	9.6075669	Title One	Description one	Ol_icon_blue_example.png 24,24	0,-24
+48.9899851	9.5382032	Title Two	Description two Ol_icon_red_example.png	16,16	-8,-8
+Attention: Please make sure you press ↵ Enter after the last character in the last line. Otherwise the last POI will not work. The space in the title and description items is not the same as the TAB which separates the items.
+
+Also see OpenLayers documentation on Layer.Text for more details.
+
+Icon files
+Then you want to download the two icon files that are needed by this example:
+
+Ol_icon_blue_example.png Blue icon
+Ol_icon_red_example.png Red icon
+Result
+All four files have to be in the same folder on your web server.
+
+Now you can open a browser window with the URL of your new index.html file. You will see OSM maps, served from the main server. If you click on the layers switcher symbol ("+" in the top right corner of the map), you will see an overlay layer called "My Points". This layer shows the markers defined by the file textfile.txt. The blue and the red marker on the map are the visible result.
+
+Important
+If you publish this example on your website, you are responsible to add all license requirements!
