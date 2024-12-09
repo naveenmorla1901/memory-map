@@ -42,3 +42,8 @@ firebase_admin.initialize_app(cred)
 
 database and secrets
 j99g0H7J5mu1QtubCEibqqrh6X90Vf67YmlBaMd2
+
+
+django Login
+nmorla
+Login123$

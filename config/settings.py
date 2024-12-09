@@ -21,8 +21,14 @@ sys.path.insert(0, str(BASE_DIR / 'apps'))
 # Security settings
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here')
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '0.0.0.0',
+    '172.22.48.1',
+    '10.0.2.2',
+    '*'
+]
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
