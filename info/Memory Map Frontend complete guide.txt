@@ -1,0 +1,1897 @@
+# Memory Map Frontend Implementation Guide
+Version 1.0 - November 2024
+
+## Table of Contents
+1. Project Overview
+2. Technical Architecture
+3. Project Setup
+4. Component Structure
+5. State Management
+6. Authentication Flow
+7. Data Management
+8. Map Implementation
+9. Offline Support
+10. Testing Strategy
+11. Security Considerations
+12. Performance Optimization
+13. Deployment Guide
+
+## 1. Project Overview
+
+### 1.1 Application Purpose
+- Personal map-based memory tracking application
+- Integration with Instagram content
+- Support for offline and online modes
+- Cross-platform (iOS/Android) support
+
+### 1.2 Key Features
+- User authentication and profile management
+- Interactive map with custom markers
+- Location management (manual and Instagram-sourced)
+- Offline data persistence
+- Real-time updates
+- Location sharing
+- Push notifications for nearby locations
+
+## 2. Technical Architecture
+
+### 2.1 Technology Stack
+- React Native with Expo
+- TypeScript for type safety
+- Redux Toolkit for state management
+- SQLite for local storage
+- Firebase for real-time features
+- OpenStreetMap with react-native-maps
+
+### 2.2 Project Structure
+```
+src/
+├── assets/
+├── components/
+├── hooks/
+├── navigation/
+├── screens/
+├── services/
+├── store/
+├── types/
+└── utils/
+```
+
+### 2.3 Key Dependencies
+- Navigation: @react-navigation/native
+- Maps: react-native-maps
+- Storage: @react-native-async-storage/async-storage
+- Database: expo-sqlite
+- State: @reduxjs/toolkit
+- Network: axios
+- Authentication: firebase/auth
+
+## 3. Project Setup
+
+### 3.1 Development Environment
+- Node.js (v16+)
+- Expo CLI
+- Android Studio (Android development)
+- Xcode (iOS development)
+- VS Code with recommended extensions
+
+### 3.2 Configuration Files
+- app.config.js (Expo configuration)
+- tsconfig.json (TypeScript settings)
+- babel.config.js (Babel configuration)
+- environment files (.env.development, .env.production)
+
+## 4. Component Structure
+
+### 4.1 Core Components
+1. **Authentication Components**
+   - LoginScreen
+   - RegisterScreen
+   - ForgotPasswordScreen
+   - AuthLoadingScreen
+   - ProfileScreen
+
+2. **Map Components**
+   - MapView
+   - LocationMarker
+   - ClusterMarker
+   - MapControls
+   - LocationDetailsModal
+
+3. **Location Management**
+   - LocationList
+   - LocationCard
+   - LocationForm
+   - CategoryFilter
+   - SearchBar
+
+4. **Shared Components**
+   - Header
+   - LoadingSpinner
+   - ErrorBoundary
+   - OfflineNotice
+   - CustomButton
+
+### 4.2 Screen Architecture
+1. **Main Screens**
+   - HomeScreen (Map)
+   - LocationsScreen (List View)
+   - ProfileScreen
+   - SettingsScreen
+
+2. **Feature Screens**
+   - AddLocationScreen
+   - LocationDetailsScreen
+   - EditLocationScreen
+   - CategoryManagementScreen
+
+## 5. State Management
+
+### 5.1 Redux Store Structure
+1. **Slices**
+   - authSlice (user authentication)
+   - locationSlice (location data)
+   - uiSlice (UI state)
+   - syncSlice (sync status)
+
+2. **Middleware**
+   - authMiddleware
+   - syncMiddleware
+   - offlineMiddleware
+
+### 5.2 Local State Management
+- Component-level useState
+- Custom hooks for shared logic
+- Context for theme/preferences
+
+## 6. Authentication Flow
+
+### 6.1 Authentication States
+1. Initial Loading
+2. Unauthenticated
+3. Authenticating
+4. Authenticated
+5. Error State
+
+### 6.2 Authentication Features
+- Email/Password authentication
+- Social authentication
+- Password reset
+- Token management
+- Session persistence
+- Biometric authentication
+
+## 7. Data Management
+
+### 7.1 Local Database Schema
+1. **Tables**
+   - locations
+   - user_locations
+   - categories
+   - sync_queue
+   - settings
+
+### 7.2 Sync Strategy
+1. **Online Mode**
+   - Real-time updates via Firebase
+   - Immediate server sync
+   - Background sync service
+
+2. **Offline Mode**
+   - Local storage first
+   - Sync queue management
+   - Conflict resolution
+
+## 8. Map Implementation
+
+### 8.1 Map Features
+- Custom map styles
+- Location clustering
+- Custom markers
+- Geofencing
+- Location tracking
+- Search and filtering
+
+### 8.2 Map Interactions
+- Pan and zoom
+- Marker selection
+- Location adding
+- Area selection
+- Route planning
+
+## 9. Offline Support
+
+### 9.1 Offline Capabilities
+- Data persistence
+- Map tile caching
+- Operation queueing
+- Background sync
+- Conflict resolution
+
+### 9.2 Sync Process
+1. Queue management
+2. Priority handling
+3. Error recovery
+4. Data validation
+5. Merge strategies
+
+## 10. Testing Strategy
+
+### 10.1 Test Types
+- Unit tests
+- Integration tests
+- E2E tests
+- Performance tests
+- Offline mode tests
+
+### 10.2 Test Coverage
+- Authentication flows
+- Data operations
+- Map functionality
+- Offline behavior
+- Sync mechanisms
+
+## 11. Security Considerations
+
+### 11.1 Data Security
+- Encryption at rest
+- Secure communication
+- Token management
+- Sensitive data handling
+
+### 11.2 Authentication Security
+- Token refresh mechanism
+- Session management
+- Biometric authentication
+- Secure storage
+
+## 12. Performance Optimization
+
+### 12.1 Optimization Areas
+- Map rendering
+- List virtualization
+- Image optimization
+- Network caching
+- Memory management
+
+### 12.2 Monitoring
+- Performance metrics
+- Error tracking
+- Usage analytics
+- Crash reporting
+
+## 13. Deployment Guide
+
+### 13.1 Development Pipeline
+1. Development environment setup
+2. Testing procedures
+3. Build process
+4. Release management
+
+### 13.2 Store Deployment
+1. App Store preparation
+2. Play Store preparation
+3. Version management
+4. Update strategy
+
+
+# Memory Map Technical Specification
+## Part 1: Setup and Core Architecture
+
+## 1. Development Environment Setup
+
+### 1.1 Prerequisites Installation
+```bash
+# Required global installations
+node -v  # Should be 16.x or higher
+npm install -g expo-cli
+npm install -g typescript
+npm install -g react-native-debugger
+```
+
+### 1.2 Project Initialization
+```bash
+expo init MemoryMap --template expo-template-typescript
+cd MemoryMap
+```
+
+### 1.3 Essential Dependencies
+```json
+{
+  "dependencies": {
+    // Navigation
+    "@react-navigation/native": "^6.x",
+    "@react-navigation/native-stack": "^6.x",
+    "@react-navigation/bottom-tabs": "^6.x",
+    
+    // State Management
+    "@reduxjs/toolkit": "^1.x",
+    "react-redux": "^8.x",
+    
+    // Maps
+    "react-native-maps": "^1.x",
+    "@react-native-community/geolocation": "^3.x",
+    
+    // Storage
+    "@react-native-async-storage/async-storage": "^1.x",
+    "expo-sqlite": "^11.x",
+    
+    // Firebase
+    "@react-native-firebase/app": "^17.x",
+    "@react-native-firebase/auth": "^17.x",
+    
+    // UI Components
+    "react-native-paper": "^5.x",
+    "react-native-vector-icons": "^9.x",
+    
+    // Utilities
+    "axios": "^1.x",
+    "date-fns": "^2.x",
+    "lodash": "^4.x"
+  }
+}
+```
+
+## 2. Project Structure Deep Dive
+
+### 2.1 Directory Organization
+```plaintext
+src/
+├── assets/               # Static assets
+│   ├── images/
+│   ├── fonts/
+│   └── icons/
+│
+├── components/           # Reusable components
+│   ├── auth/            # Authentication components
+│   ├── map/             # Map-related components
+│   ├── locations/       # Location management
+│   ├── shared/          # Shared/common components
+│   └── ui/              # UI elements
+│
+├── hooks/               # Custom React hooks
+│   ├── useAuth.ts
+│   ├── useLocation.ts
+│   ├── useMap.ts
+│   └── useSync.ts
+│
+├── navigation/          # Navigation configuration
+│   ├── AppNavigator.tsx
+│   ├── AuthNavigator.tsx
+│   └── types.ts
+│
+├── screens/             # Screen components
+│   ├── auth/
+│   ├── map/
+│   ├── locations/
+│   └── settings/
+│
+├── services/           # API and service layers
+│   ├── api/
+│   ├── firebase/
+│   ├── storage/
+│   └── location/
+│
+├── store/              # Redux store configuration
+│   ├── slices/
+│   ├── middleware/
+│   └── index.ts
+│
+├── types/              # TypeScript type definitions
+│   ├── models.ts
+│   ├── api.ts
+│   └── store.ts
+│
+└── utils/              # Utility functions
+    ├── constants.ts
+    ├── helpers.ts
+    └── validation.ts
+```
+
+### 2.2 Key Type Definitions
+```typescript
+// types/models.ts
+
+export interface Location {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  description?: string;
+  category: string;
+  isInstagramSource: boolean;
+  instagramUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: 'synced' | 'pending' | 'error';
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  preferences: UserPreferences;
+}
+
+export interface UserPreferences {
+  defaultMapView: {
+    latitude: number;
+    longitude: number;
+    zoom: number;
+  };
+  notifications: boolean;
+  theme: 'light' | 'dark' | 'system';
+  syncFrequency: number;
+}
+```
+
+## 3. Core Technical Decisions
+
+### 3.1 State Management Strategy
+- **Redux Toolkit**: Centralizes application state management
+  - Handles complex state interactions
+  - Manages sync status
+  - Controls UI state
+  
+- **Local Component State**: For UI-specific state
+  - Form inputs
+  - Modal visibility
+  - Animation states
+
+### 3.2 Navigation Architecture
+```typescript
+// navigation/types.ts
+
+export type RootStackParamList = {
+  Auth: undefined;
+  Main: undefined;
+  Modal: { type: string; data: any };
+};
+
+export type MainTabParamList = {
+  Map: undefined;
+  Locations: undefined;
+  Profile: undefined;
+  Settings: undefined;
+};
+
+export type MapStackParamList = {
+  MapView: undefined;
+  LocationDetails: { locationId: string };
+  AddLocation: undefined;
+  EditLocation: { locationId: string };
+};
+```
+
+### 3.3 Data Flow Architecture
+```mermaid
+flowchart TD
+    A[User Action] --> B[Component]
+    B --> C{Is Online?}
+    C -->|Yes| D[API Service]
+    C -->|No| E[Local Storage]
+    D --> F[Redux Store]
+    E --> F
+    F --> G[UI Update]
+    F --> H[Sync Queue]
+    H --> I{Network Available?}
+    I -->|Yes| J[Sync with Backend]
+```
+
+### 3.4 Authentication Flow
+```mermaid
+sequenceDiagram
+    participant User
+    participant App
+    participant Redux
+    participant Firebase
+    participant Backend
+
+    User->>App: Enter Credentials
+    App->>Firebase: Authenticate
+    Firebase-->>App: Token
+    App->>Redux: Store Token
+    App->>Backend: Validate Token
+    Backend-->>App: User Data
+    App->>Redux: Store User Data
+    Redux-->>App: Update UI
+```
+
+## 4. Configuration Files
+
+### 4.1 Environment Configuration
+```typescript
+// config/env.ts
+
+export const ENV = {
+  development: {
+    API_URL: 'http://localhost:8000',
+    FIREBASE_CONFIG: {
+      // Firebase configuration
+    },
+    MAP_CONFIG: {
+      initialRegion: {
+        latitude: 37.7749,
+        longitude: -122.4194,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      },
+      defaultZoom: 15,
+    },
+  },
+  production: {
+    // Production configuration
+  },
+};
+```
+
+### 4.2 Theme Configuration
+```typescript
+// config/theme.ts
+
+export const theme = {
+  colors: {
+    primary: '#007AFF',
+    secondary: '#5856D6',
+    background: '#FFFFFF',
+    surface: '#F2F2F7',
+    text: '#000000',
+    error: '#FF3B30',
+    // ... more colors
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 24,
+    xl: 32,
+  },
+  typography: {
+    h1: {
+      fontSize: 32,
+      fontWeight: 'bold',
+    },
+    // ... more typography styles
+  },
+};
+```
+
+## 5. Development Workflow
+
+### 5.1 Code Quality Tools
+```json
+{
+  "scripts": {
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "type-check": "tsc --noEmit",
+    "test": "jest",
+    "prettier": "prettier --write \"**/*.{js,jsx,ts,tsx,json}\""
+  }
+}
+```
+
+### 5.2 Git Workflow
+```plaintext
+main
+├── develop
+│   ├── feature/auth
+│   ├── feature/map
+│   └── feature/locations
+└── release/v1.0.0
+```
+
+### 5.3 Testing Strategy
+- Unit tests for utilities and hooks
+- Component tests for UI elements
+- Integration tests for key flows
+- E2E tests for critical paths
+
+# Memory Map Technical Specification
+## Part 2: Authentication Implementation
+
+### 1. Authentication Architecture
+
+#### 1.1 Authentication Flow
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Auth UI
+    participant S as Auth Service
+    participant F as Firebase
+    participant B as Backend
+    participant D as Local DB
+
+    U->>A: Input Credentials
+    A->>S: Submit Auth Request
+    S->>F: Firebase Auth
+    F-->>S: Auth Token
+    S->>B: Validate Token
+    B-->>S: User Data
+    S->>D: Store Auth State
+    S-->>A: Update UI
+```
+
+#### 1.2 Auth Service Structure
+```typescript
+// services/auth/types.ts
+interface AuthState {
+  isAuthenticated: boolean;
+  user: User | null;
+  token: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
+interface AuthCredentials {
+  email: string;
+  password: string;
+}
+
+// services/auth/authService.ts
+class AuthService {
+  async login(credentials: AuthCredentials)
+  async register(userData: UserRegistrationData)
+  async logout()
+  async resetPassword(email: string)
+  async refreshToken()
+  async validateToken()
+}
+```
+
+### 2. Authentication Components
+
+#### 2.1 Component Hierarchy
+```plaintext
+AuthNavigator/
+├── LoginScreen/
+│   ├── LoginForm
+│   ├── SocialAuthButtons
+│   └── ForgotPasswordLink
+├── RegisterScreen/
+│   ├── RegisterForm
+│   └── TermsAgreement
+├── ForgotPasswordScreen/
+└── AuthLoadingScreen/
+```
+
+#### 2.2 Biometric Authentication
+```typescript
+interface BiometricConfig {
+  allowDeviceCredentials: boolean;
+  authenticationType: 'fingerprint' | 'face' | 'biometrics';
+  fallbackToPassword: boolean;
+}
+
+class BiometricService {
+  async checkAvailability(): Promise<boolean>
+  async authenticate(config: BiometricConfig): Promise<boolean>
+  async enableBiometric(userId: string): Promise<void>
+}
+```
+
+## Part 3: Map Integration and Location Management
+
+### 1. Map Implementation
+
+#### 1.1 Map Configuration
+```typescript
+interface MapConfig {
+  initialRegion: {
+    latitude: number;
+    longitude: number;
+    latitudeDelta: number;
+    longitudeDelta: number;
+  };
+  maxZoomLevel: number;
+  minZoomLevel: number;
+  clustering: {
+    enabled: boolean;
+    radius: number;
+    maxZoom: number;
+  };
+  tileProvider: {
+    urlTemplate: string;
+    maximumZ: number;
+    attribution: string;
+  };
+}
+```
+
+#### 1.2 Map Features Structure
+```plaintext
+MapComponents/
+├── MapView/
+│   ├── BaseMap
+│   ├── MapControls
+│   └── LocationMarkers
+├── Clustering/
+│   ├── ClusterManager
+│   └── ClusterMarker
+├── Controls/
+│   ├── ZoomControls
+│   ├── LayerControls
+│   └── SearchOverlay
+└── Interactions/
+    ├── MarkerCallouts
+    └── GestureHandlers
+```
+
+### 2. Location Management
+
+#### 2.1 Location Data Structure
+```typescript
+interface LocationData {
+  id: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  };
+  metadata: {
+    name: string;
+    description: string;
+    category: string;
+    tags: string[];
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  source: {
+    type: 'manual' | 'instagram';
+    reference?: string;
+  };
+  media: {
+    type: string;
+    url: string;
+    thumbnail?: string;
+  }[];
+  sharing: {
+    isPublic: boolean;
+    sharedWith: string[];
+  };
+}
+```
+
+#### 2.2 Location Services
+```typescript
+class LocationService {
+  // Core operations
+  async fetchLocations(filters?: LocationFilters): Promise<Location[]>
+  async addLocation(data: LocationData): Promise<Location>
+  async updateLocation(id: string, data: Partial<LocationData>): Promise<Location>
+  async deleteLocation(id: string): Promise<void>
+
+  // Specialized operations
+  async searchNearby(coordinates: Coordinates, radius: number): Promise<Location[]>
+  async importFromInstagram(url: string): Promise<Location>
+  async shareLocation(id: string, users: string[]): Promise<void>
+  async exportLocations(format: 'json' | 'csv'): Promise<Blob>
+}
+```
+
+### 3. Map Interactions
+
+#### 3.1 Gesture Handling
+```typescript
+interface MapGestureConfig {
+  enableRotation: boolean;
+  enableTilt: boolean;
+  enableZoom: boolean;
+  enablePan: boolean;
+  minZoomLevel: number;
+  maxZoomLevel: number;
+}
+
+class MapInteractionManager {
+  handleLongPress(event: MapEvent): void
+  handleMarkerPress(marker: Marker): void
+  handleMapMovement(region: Region): void
+  handleClusterPress(cluster: Cluster): void
+}
+```
+
+#### 3.2 Custom Markers
+```typescript
+interface CustomMarker {
+  id: string;
+  coordinate: {
+    latitude: number;
+    longitude: number;
+  };
+  type: 'location' | 'cluster' | 'current';
+  style: MarkerStyle;
+  callout?: CalloutConfig;
+  onPress?: () => void;
+}
+
+interface MarkerStyle {
+  icon: string;
+  color: string;
+  size: number;
+  animation?: 'bounce' | 'pulse' | 'none';
+}
+```
+
+### 4. Location Search and Filtering
+
+#### 4.1 Search Implementation
+```typescript
+interface SearchOptions {
+  query: string;
+  filters: {
+    categories?: string[];
+    dateRange?: DateRange;
+    radius?: number;
+    source?: 'manual' | 'instagram' | 'all';
+  };
+  sorting: {
+    field: 'date' | 'name' | 'distance';
+    order: 'asc' | 'desc';
+  };
+}
+
+class LocationSearch {
+  async searchLocations(options: SearchOptions): Promise<SearchResult>
+  async getAutocompleteSuggestions(query: string): Promise<string[]>
+  async reverseGeocode(coordinates: Coordinates): Promise<Address>
+}
+```
+
+#### 4.2 Filter System
+```typescript
+interface FilterConfig {
+  categories: {
+    enabled: boolean;
+    multiSelect: boolean;
+    options: string[];
+  };
+  dateRange: {
+    enabled: boolean;
+    defaultRange: number; // days
+  };
+  radius: {
+    enabled: boolean;
+    defaultRadius: number; // meters
+    maxRadius: number;
+  };
+  source: {
+    enabled: boolean;
+    options: ('manual' | 'instagram')[];
+  };
+}
+```
+
+# Memory Map Technical Specification
+## Part 4: Offline Support and Sync Mechanism
+
+### 1. Offline Architecture
+
+#### 1.1 Local Database Schema
+```typescript
+// SQLite Schema Definition
+interface DatabaseSchema {
+  locations: {
+    id: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    description: string;
+    category: string;
+    isInstagramSource: boolean;
+    instagramUrl?: string;
+    createdAt: string;
+    updatedAt: string;
+    syncStatus: 'synced' | 'pending' | 'error';
+    lastSynced: string;
+    version: number;
+  };
+
+  syncQueue: {
+    id: string;
+    operation: 'create' | 'update' | 'delete';
+    entityType: 'location' | 'profile' | 'settings';
+    entityId: string;
+    data: string; // JSON stringified
+    timestamp: string;
+    attempts: number;
+    status: 'pending' | 'processing' | 'failed';
+  };
+
+  settings: {
+    key: string;
+    value: string;
+    lastUpdated: string;
+  };
+}
+```
+
+#### 1.2 Sync Strategy
+```mermaid
+flowchart TD
+    A[User Action] --> B{Is Online?}
+    B -->|Yes| C[Direct API Call]
+    B -->|No| D[Store in Local DB]
+    D --> E[Add to Sync Queue]
+    E --> F[Background Sync Service]
+    F --> G{Network Available?}
+    G -->|Yes| H[Process Queue]
+    G -->|No| I[Retry Later]
+    H --> J[Update Local DB]
+    H --> K[Update Server]
+```
+
+### 2. Offline Support Implementation
+
+#### 2.1 Data Manager Service
+```typescript
+class DataManager {
+  // Core data operations
+  async getData(entity: string, query: QueryParams): Promise<any[]>
+  async saveData(entity: string, data: any): Promise<void>
+  async updateData(entity: string, id: string, data: any): Promise<void>
+  async deleteData(entity: string, id: string): Promise<void>
+
+  // Sync operations
+  async syncWithServer(): Promise<SyncResult>
+  async resolveConflicts(conflicts: Conflict[]): Promise<void>
+  async getUnsyncedChanges(): Promise<QueueItem[]>
+
+  // Queue management
+  async addToQueue(operation: QueueOperation): Promise<void>
+  async processQueue(): Promise<void>
+  async retryFailedOperations(): Promise<void>
+}
+```
+
+#### 2.2 Conflict Resolution Strategy
+```typescript
+interface ConflictResolution {
+  strategy: 'client-wins' | 'server-wins' | 'manual';
+  resolver: (clientData: any, serverData: any) => Promise<any>;
+  mergeRules: {
+    [field: string]: 'client' | 'server' | 'newest' | 'manual';
+  };
+}
+
+class ConflictResolver {
+  async detectConflicts(local: any, remote: any): Promise<Conflict[]>
+  async resolveConflict(conflict: Conflict): Promise<Resolution>
+  async applyResolution(resolution: Resolution): Promise<void>
+}
+```
+
+### 3. Background Sync Service
+
+#### 3.1 Sync Service Configuration
+```typescript
+interface SyncConfig {
+  syncInterval: number; // milliseconds
+  maxRetries: number;
+  batchSize: number;
+  priorities: {
+    [entityType: string]: number;
+  };
+  networkRequirements: {
+    requiresWifi: boolean;
+    requiresCharging: boolean;
+    batteryLevelMin: number;
+  };
+}
+```
+
+#### 3.2 Sync Process
+```typescript
+class SyncService {
+  // Core sync functionality
+  async startSync(): Promise<void>
+  async stopSync(): Promise<void>
+  async forceSyncNow(): Promise<SyncResult>
+
+  // Queue processing
+  async processQueue(): Promise<void>
+  async handleSyncFailure(error: Error): Promise<void>
+  async validateSyncState(): Promise<boolean>
+
+  // Monitoring
+  async getSyncStatus(): Promise<SyncStatus>
+  async getSyncProgress(): Promise<SyncProgress>
+}
+```
+
+## Part 5: UI Components and Screens
+
+### 1. Screen Architecture
+
+#### 1.1 Screen Hierarchy
+```plaintext
+Screens/
+├── Auth/
+│   ├── LoginScreen
+│   ├── RegisterScreen
+│   └── ForgotPasswordScreen
+├── Main/
+│   ├── MapScreen
+│   ├── LocationListScreen
+│   └── ProfileScreen
+├── Location/
+│   ├── AddLocationScreen
+│   ├── EditLocationScreen
+│   └── LocationDetailsScreen
+└── Settings/
+    ├── SettingsScreen
+    ├── NotificationSettings
+    └── MapSettings
+```
+
+#### 1.2 Navigation Flow
+```mermaid
+flowchart TD
+    A[App Launch] --> B{Is Authenticated?}
+    B -->|No| C[Auth Stack]
+    B -->|Yes| D[Main Stack]
+    
+    C --> C1[Login]
+    C --> C2[Register]
+    C --> C3[Forgot Password]
+    
+    D --> D1[Map Tab]
+    D --> D2[Locations Tab]
+    D --> D3[Profile Tab]
+    D --> D4[Settings Tab]
+```
+
+### 2. UI Components Library
+
+#### 2.1 Core Components
+```typescript
+// Component definitions
+interface CoreComponents {
+  Button: {
+    variant: 'primary' | 'secondary' | 'outline';
+    size: 'sm' | 'md' | 'lg';
+    loading?: boolean;
+    icon?: string;
+  };
+
+  Input: {
+    type: 'text' | 'email' | 'password' | 'number';
+    validation?: ValidationRules;
+    mask?: InputMask;
+  };
+
+  Card: {
+    variant: 'default' | 'elevated' | 'outlined';
+    padding?: number;
+    onPress?: () => void;
+  };
+
+  Modal: {
+    size: 'sm' | 'md' | 'lg' | 'full';
+    animation: 'slide' | 'fade' | 'none';
+    dismissible: boolean;
+  };
+}
+```
+
+#### 2.2 Custom Components
+```typescript
+// Location-specific components
+interface LocationComponents {
+  LocationCard: {
+    location: Location;
+    onPress: () => void;
+    variant: 'list' | 'grid' | 'map';
+  };
+
+  LocationMarker: {
+    coordinate: LatLng;
+    type: 'default' | 'selected' | 'cluster';
+    count?: number;
+  };
+
+  CategoryBadge: {
+    category: string;
+    size: 'sm' | 'md';
+    color?: string;
+  };
+}
+```
+
+### 3. Theme and Styling
+
+#### 3.1 Theme Configuration
+```typescript
+interface ThemeConfig {
+  colors: {
+    primary: string;
+    secondary: string;
+    background: string;
+    surface: string;
+    text: string;
+    error: string;
+    success: string;
+    warning: string;
+    info: string;
+  };
+
+  typography: {
+    fontFamily: string;
+    sizes: {
+      h1: number;
+      h2: number;
+      body: number;
+      caption: number;
+    };
+    weights: {
+      regular: string;
+      medium: string;
+      bold: string;
+    };
+  };
+
+  spacing: {
+    xs: number;
+    sm: number;
+    md: number;
+    lg: number;
+    xl: number;
+  };
+
+  borderRadius: {
+    sm: number;
+    md: number;
+    lg: number;
+    full: number;
+  };
+}
+```
+
+#### 3.2 Responsive Design
+```typescript
+interface ResponsiveConfig {
+  breakpoints: {
+    phone: number;
+    tablet: number;
+    desktop: number;
+  };
+
+  layouts: {
+    [key: string]: {
+      [breakpoint: string]: LayoutProps;
+    };
+  };
+
+  scaling: {
+    baseSize: number;
+    scaleFactor: number;
+    minScale: number;
+    maxScale: number;
+  };
+}
+```
+
+### 4. Animation System
+
+#### 4.1 Animation Configurations
+```typescript
+interface AnimationSystem {
+  transitions: {
+    default: string;
+    slow: string;
+    fast: string;
+  };
+
+  animations: {
+    fadeIn: Animation;
+    fadeOut: Animation;
+    slideIn: Animation;
+    slideOut: Animation;
+    bounce: Animation;
+  };
+
+  timing: {
+    short: number;
+    medium: number;
+    long: number;
+  };
+}
+```
+
+#### 4.2 Interaction Feedback
+```typescript
+interface FeedbackSystem {
+  haptic: {
+    light: () => void;
+    medium: () => void;
+    heavy: () => void;
+  };
+
+  visual: {
+    highlight: (ref: any) => void;
+    shake: (ref: any) => void;
+    pulse: (ref: any) => void;
+  };
+
+  sound: {
+    success: () => void;
+    error: () => void;
+    notification: () => void;
+  };
+}
+```
+
+# OpenStreetMap Integration Guide for Memory Map
+
+## 1. Map Integration Architecture
+
+### 1.1 Map Service Layer
+```typescript
+interface MapConfig {
+  defaultCenter: {
+    latitude: number;
+    longitude: number;
+  };
+  defaultZoom: number;
+  maxZoom: number;
+  minZoom: number;
+  tileServer: {
+    url: string;
+    attribution: string;
+    maxZoom: number;
+  };
+  boundaries?: {
+    minLat: number;
+    maxLat: number;
+    minLng: number;
+    maxLng: number;
+  };
+}
+
+interface MapMarker {
+  id: string;
+  position: {
+    latitude: number;
+    longitude: number;
+  };
+  title?: string;
+  description?: string;
+  type: 'location' | 'cluster' | 'current';
+  icon?: string;
+  popup?: {
+    content: string;
+    width: number;
+    height: number;
+  };
+}
+```
+
+### 1.2 Component Structure
+```plaintext
+maps/
+├── components/
+│   ├── MapView/
+│   │   ├── MapContainer.tsx
+│   │   ├── MapControls.tsx
+│   │   └── MapAttribution.tsx
+│   ├── Markers/
+│   │   ├── LocationMarker.tsx
+│   │   ├── ClusterMarker.tsx
+│   │   └── MarkerPopup.tsx
+│   └── Controls/
+│       ├── ZoomControl.tsx
+│       ├── LayerControl.tsx
+│       └── SearchControl.tsx
+├── services/
+│   ├── mapService.ts
+│   ├── projectionService.ts
+│   └── tileService.ts
+└── utils/
+    ├── mapHelpers.ts
+    └── coordinateTransform.ts
+```
+
+## 2. OpenStreetMap Integration
+
+### 2.1 Base Map Configuration
+```typescript
+const OSM_CONFIG = {
+  tileServer: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19,
+    subdomains: ['a', 'b', 'c']
+  },
+  projections: {
+    fromProjection: 'EPSG:4326',    // WGS 84
+    toProjection: 'EPSG:900913'     // Spherical Mercator
+  },
+  performance: {
+    tileLoadingStrategy: 'lazy',
+    maxSimultaneousRequests: 4,
+    cacheSize: 256
+  }
+};
+```
+
+### 2.2 Map Service Implementation
+```typescript
+class OpenStreetMapService {
+  // Core map functionality
+  initializeMap(containerId: string, config: MapConfig): Promise<void>
+  setCenter(latitude: number, longitude: number): void
+  setZoom(level: number): void
+  
+  // Marker management
+  addMarker(marker: MapMarker): void
+  removeMarker(markerId: string): void
+  updateMarker(markerId: string, updates: Partial<MapMarker>): void
+  
+  // Layer management
+  addLayer(layer: MapLayer): void
+  removeLayer(layerId: string): void
+  toggleLayer(layerId: string, visible: boolean): void
+  
+  // Event handlers
+  onMapClick(callback: (event: MapClickEvent) => void): void
+  onMarkerClick(callback: (marker: MapMarker) => void): void
+  onMapMoved(callback: (bounds: MapBounds) => void): void
+}
+```
+
+## 3. Offline Map Support
+
+### 3.1 Tile Caching System
+```typescript
+interface TileCacheConfig {
+  maxSize: number;          // Maximum cache size in MB
+  expiration: number;       // Cache expiration in hours
+  preloadZoomLevels: number[];
+  regions: {
+    bounds: MapBounds;
+    minZoom: number;
+    maxZoom: number;
+  }[];
+}
+
+class TileCacheManager {
+  // Cache management
+  async cacheTiles(bounds: MapBounds, zoomLevels: number[]): Promise<void>
+  async clearCache(): Promise<void>
+  async getCacheStatus(): Promise<CacheStatus>
+  
+  // Tile retrieval
+  async getTile(x: number, y: number, zoom: number): Promise<Blob>
+  async preloadRegion(region: MapRegion): Promise<void>
+}
+```
+
+## 4. Location Features Implementation
+
+### 4.1 Location Management
+```typescript
+interface LocationManager {
+  // Core location operations
+  getCurrentPosition(): Promise<Position>
+  watchPosition(callback: PositionCallback): number
+  stopWatching(watchId: number): void
+  
+  // Geofencing
+  addGeofence(fence: Geofence): Promise<void>
+  removeGeofence(fenceId: string): Promise<void>
+  checkGeofences(position: Position): Promise<GeofenceEvent[]>
+}
+```
+
+### 4.2 Custom Markers and Clustering
+```typescript
+interface MarkerClusterConfig {
+  maxClusterRadius: number;
+  minClusterSize: number;
+  styles: ClusterStyle[];
+  zoomToBoundsOnClick: boolean;
+  spiderfyOnMaxZoom: boolean;
+}
+
+class MarkerClusterManager {
+  // Cluster operations
+  addToCluster(marker: MapMarker): void
+  removeFromCluster(markerId: string): void
+  refreshClusters(): void
+  
+  // Cluster events
+  onClusterClick(callback: (cluster: MarkerCluster) => void): void
+  onClusterSpiderfy(callback: (markers: MapMarker[]) => void): void
+}
+```
+
+## 5. Integration with Memory Map Features
+
+### 5.1 Location Synchronization
+```typescript
+interface LocationSync {
+  // Sync operations
+  syncLocationsToMap(locations: Location[]): Promise<void>
+  updateLocationOnMap(location: Location): Promise<void>
+  removeLocationFromMap(locationId: string): Promise<void>
+  
+  // Map state persistence
+  saveMapState(state: MapState): Promise<void>
+  restoreMapState(): Promise<MapState>
+}
+```
+
+### 5.2 Instagram Integration
+```typescript
+interface InstagramLocationMapper {
+  // Location mapping
+  mapInstagramLocationToMarker(instagramLocation: InstagramLocation): MapMarker
+  createMarkerFromInstagramPost(post: InstagramPost): MapMarker
+  
+  // Marker customization
+  getInstagramMarkerStyle(post: InstagramPost): MarkerStyle
+  createInstagramPopupContent(post: InstagramPost): string
+}
+```
+
+## 6. Performance Considerations
+
+### 6.1 Optimization Strategies
+```typescript
+interface MapOptimizations {
+  // Tile loading
+  tileLoadStrategy: 'eager' | 'lazy' | 'progressive';
+  maxParallelTileLoads: number;
+  tileRetryOptions: {
+    maxRetries: number;
+    retryDelay: number;
+  };
+  
+  // Marker rendering
+  markerRenderStrategy: 'all' | 'viewport' | 'clustered';
+  markerUpdateThrottle: number;
+  
+  // Viewport management
+  viewportUpdateDebounce: number;
+  outOfViewportPurgeDelay: number;
+}
+```
+
+### 6.2 Memory Management
+```typescript
+interface MemoryManagement {
+  // Resource cleanup
+  disposeUnusedMarkers(): void
+  clearTileCache(): void
+  releaseOutOfViewResources(): void
+  
+  // Memory monitoring
+  getMemoryUsage(): MemoryStats
+  setMemoryThresholds(thresholds: MemoryThresholds): void
+}
+```
+
+# Memory Map Storage Implementation Plan
+
+## 1. Backend Firebase Database Structure
+
+### Firebase Realtime Database Schema
+```javascript
+{
+  "users": {
+    "$userId": {
+      "profile": {
+        "email": string,
+        "displayName": string,
+        "photoURL": string | null,
+        "createdAt": timestamp,
+        "lastLogin": timestamp
+      },
+      "settings": {
+        "defaultMapView": {
+          "latitude": number,
+          "longitude": number,
+          "zoom": number
+        },
+        "notifications": boolean,
+        "syncFrequency": number
+      }
+    }
+  },
+  "locations": {
+    "$locationId": {
+      "name": string,
+      "latitude": number,
+      "longitude": number,
+      "description": string,
+      "category": string,
+      "createdBy": string, // userId
+      "createdAt": timestamp,
+      "updatedAt": timestamp,
+      "isInstagramSource": boolean,
+      "instagramData": {
+        "url": string,
+        "postId": string,
+        "caption": string,
+        "postedAt": timestamp
+      } | null,
+      "syncStatus": "synced" | "pending" | "error",
+      "version": number
+    }
+  },
+  "userLocations": {
+    "$userId": {
+      "$locationId": {
+        "customName": string | null,
+        "notes": string | null,
+        "isFavorite": boolean,
+        "createdAt": timestamp,
+        "lastVisited": timestamp | null,
+        "notificationRadius": number | null
+      }
+    }
+  }
+}
+```
+
+### Backend Firebase Integration Service
+```python
+# services/firebase_service.py
+from firebase_admin import db, auth
+from datetime import datetime
+
+class FirebaseService:
+    def __init__(self):
+        self.db = db.reference()
+        
+    async def save_user(self, user_data: dict) -> str:
+        """Save user data to Firebase"""
+        user_ref = self.db.child('users').child(user_data['id'])
+        user_ref.set({
+            'profile': {
+                'email': user_data['email'],
+                'displayName': user_data.get('display_name', ''),
+                'photoURL': user_data.get('photo_url'),
+                'createdAt': datetime.now().isoformat(),
+                'lastLogin': datetime.now().isoformat()
+            },
+            'settings': {
+                'defaultMapView': {
+                    'latitude': 0,
+                    'longitude': 0,
+                    'zoom': 10
+                },
+                'notifications': True,
+                'syncFrequency': 300  # 5 minutes
+            }
+        })
+        return user_data['id']
+
+    async def save_location(self, location_data: dict) -> str:
+        """Save location data to Firebase"""
+        location_ref = self.db.child('locations').push()
+        location_id = location_ref.key
+        
+        location_ref.set({
+            'name': location_data['name'],
+            'latitude': location_data['latitude'],
+            'longitude': location_data['longitude'],
+            'description': location_data.get('description', ''),
+            'category': location_data.get('category', 'uncategorized'),
+            'createdBy': location_data['user_id'],
+            'createdAt': datetime.now().isoformat(),
+            'updatedAt': datetime.now().isoformat(),
+            'isInstagramSource': location_data.get('is_instagram_source', False),
+            'instagramData': location_data.get('instagram_data'),
+            'syncStatus': 'synced',
+            'version': 1
+        })
+        
+        # Save user-specific location data
+        user_location_ref = self.db.child('userLocations')\
+            .child(location_data['user_id'])\
+            .child(location_id)
+            
+        user_location_ref.set({
+            'customName': None,
+            'notes': None,
+            'isFavorite': False,
+            'createdAt': datetime.now().isoformat(),
+            'lastVisited': None,
+            'notificationRadius': None
+        })
+        
+        return location_id
+
+    async def get_user_locations(self, user_id: str) -> list:
+        """Fetch all locations for a user"""
+        user_locations = self.db.child('userLocations')\
+            .child(user_id)\
+            .get()
+            
+        if not user_locations:
+            return []
+            
+        locations = []
+        for loc_id, user_loc_data in user_locations.items():
+            location_data = self.db.child('locations')\
+                .child(loc_id)\
+                .get()
+                
+            if location_data:
+                locations.append({
+                    'id': loc_id,
+                    **location_data,
+                    'userSpecific': user_loc_data
+                })
+                
+        return locations
+```
+
+## 2. Frontend SQLite Implementation
+
+### SQLite Database Schema
+```typescript
+// database/schema.ts
+export const DATABASE_SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    display_name TEXT,
+    photo_url TEXT,
+    created_at TEXT,
+    last_login TEXT,
+    sync_status TEXT DEFAULT 'synced'
+);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id TEXT PRIMARY KEY,
+    default_latitude REAL,
+    default_longitude REAL,
+    default_zoom INTEGER,
+    notifications_enabled INTEGER DEFAULT 1,
+    sync_frequency INTEGER DEFAULT 300,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS locations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    description TEXT,
+    category TEXT,
+    created_by TEXT,
+    created_at TEXT,
+    updated_at TEXT,
+    is_instagram_source INTEGER DEFAULT 0,
+    instagram_url TEXT,
+    instagram_post_id TEXT,
+    instagram_caption TEXT,
+    instagram_posted_at TEXT,
+    sync_status TEXT DEFAULT 'pending',
+    version INTEGER DEFAULT 1,
+    FOREIGN KEY(created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_locations (
+    user_id TEXT,
+    location_id TEXT,
+    custom_name TEXT,
+    notes TEXT,
+    is_favorite INTEGER DEFAULT 0,
+    created_at TEXT,
+    last_visited TEXT,
+    notification_radius REAL,
+    sync_status TEXT DEFAULT 'pending',
+    PRIMARY KEY(user_id, location_id),
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(location_id) REFERENCES locations(id)
+);
+
+CREATE TABLE IF NOT EXISTS sync_queue (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    data TEXT,
+    created_at TEXT,
+    attempts INTEGER DEFAULT 0,
+    last_attempt TEXT,
+    status TEXT DEFAULT 'pending'
+);
+`;
+```
+
+### Database Service Implementation
+```typescript
+// services/DatabaseService.ts
+import * as SQLite from 'expo-sqlite';
+import { DATABASE_SCHEMA } from '../database/schema';
+
+export class DatabaseService {
+    private db: SQLite.WebSQLDatabase;
+
+    constructor() {
+        this.db = SQLite.openDatabase('memory_map.db');
+        this.initDatabase();
+    }
+
+    private async initDatabase(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.db.transaction(tx => {
+                tx.executeSql(DATABASE_SCHEMA);
+            }, 
+            error => {
+                console.error('Database initialization error:', error);
+                reject(error);
+            },
+            () => {
+                console.log('Database initialized successfully');
+                resolve();
+            });
+        });
+    }
+
+    async saveLocation(location: Location): Promise<string> {
+        return new Promise((resolve, reject) => {
+            this.db.transaction(tx => {
+                tx.executeSql(
+                    `INSERT OR REPLACE INTO locations (
+                        id, name, latitude, longitude, description,
+                        category, created_by, created_at, updated_at,
+                        is_instagram_source, instagram_url, sync_status, version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        location.id,
+                        location.name,
+                        location.latitude,
+                        location.longitude,
+                        location.description,
+                        location.category,
+                        location.createdBy,
+                        location.createdAt,
+                        location.updatedAt,
+                        location.isInstagramSource ? 1 : 0,
+                        location.instagramUrl,
+                        'pending',
+                        location.version
+                    ],
+                    (_, result) => resolve(location.id),
+                    (_, error) => reject(error)
+                );
+            });
+        });
+    }
+
+    async getOfflineLocations(userId: string): Promise<Location[]> {
+        return new Promise((resolve, reject) => {
+            this.db.transaction(tx => {
+                tx.executeSql(
+                    `SELECT l.*, ul.custom_name, ul.notes, ul.is_favorite
+                     FROM locations l
+                     LEFT JOIN user_locations ul 
+                     ON l.id = ul.location_id AND ul.user_id = ?
+                     WHERE l.created_by = ? OR ul.user_id IS NOT NULL`,
+                    [userId, userId],
+                    (_, { rows: { _array } }) => resolve(_array),
+                    (_, error) => reject(error)
+                );
+            });
+        });
+    }
+
+    async addToSyncQueue(entity: SyncQueueItem): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.db.transaction(tx => {
+                tx.executeSql(
+                    `INSERT INTO sync_queue (
+                        id, entity_type, entity_id, operation, 
+                        data, created_at, status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        entity.id,
+                        entity.entityType,
+                        entity.entityId,
+                        entity.operation,
+                        JSON.stringify(entity.data),
+                        new Date().toISOString(),
+                        'pending'
+                    ],
+                    (_, result) => resolve(),
+                    (_, error) => reject(error)
+                );
+            });
+        });
+    }
+}
+```
+
+## 3. Sync Service Implementation
+
+```typescript
+// services/SyncService.ts
+import { DatabaseService } from './DatabaseService';
+import { FirebaseService } from './FirebaseService';
+
+export class SyncService {
+    constructor(
+        private db: DatabaseService,
+        private firebase: FirebaseService
+    ) {}
+
+    async syncLocations(userId: string): Promise<void> {
+        try {
+            // Get pending sync items
+            const pendingItems = await this.db.getSyncQueue('pending');
+            
+            for (const item of pendingItems) {
+                try {
+                    if (item.entityType === 'location') {
+                        await this.syncLocation(item);
+                    } else if (item.entityType === 'userLocation') {
+                        await this.syncUserLocation(item);
+                    }
+                    
+                    await this.db.updateSyncQueueStatus(item.id, 'completed');
+                } catch (error) {
+                    console.error(`Sync failed for item ${item.id}:`, error);
+                    await this.db.updateSyncQueueStatus(item.id, 'error');
+                }
+            }
+
+            // Fetch and sync down from Firebase
+            const firebaseLocations = await this.firebase.getUserLocations(userId);
+            await this.syncDownLocations(firebaseLocations);
+
+        } catch (error) {
+            console.error('Sync error:', error);
+            throw error;
+        }
+    }
+
+    private async syncLocation(item: SyncQueueItem): Promise<void> {
+        const locationData = JSON.parse(item.data);
+        
+        switch (item.operation) {
+            case 'create':
+            case 'update':
+                await this.firebase.saveLocation(locationData);
+                break;
+            case 'delete':
+                await this.firebase.deleteLocation(item.entityId);
+                break;
+        }
+    }
+
+    private async syncDownLocations(firebaseLocations: any[]): Promise<void> {
+        for (const location of firebaseLocations) {
+            await this.db.saveLocation({
+                ...location,
+                syncStatus: 'synced'
+            });
+        }
+    }
+}
+```
+
+## Next Steps
+
+1. **Implement Background Sync**
+   - Set up periodic sync service
+   - Handle offline queue processing
+   - Implement retry mechanisms
+
+2. **Add Conflict Resolution**
+   - Version-based conflict detection
+   - Merge strategies for conflicting changes
+   - User preference for conflict resolution
+
+3. **Optimize Performance**
+   - Batch sync operations
+   - Implement efficient queuing
+   - Add caching layer
+
+Would you like me to:
+1. Implement the background sync mechanism?
+2. Create the conflict resolution system?
+3. Add batch operations support?
+4. Work on another aspect of the storage implementation?

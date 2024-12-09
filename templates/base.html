@@ -1,0 +1,271 @@
+<!-- templates/base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Memory Map{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        /* Custom styles */
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        
+        .nav-link {
+            @apply px-4 py-2 text-gray-700 hover:text-gray-900;
+        }
+        
+        .nav-link.active {
+            @apply text-blue-600 font-semibold;
+        }
+        
+        .btn {
+            @apply px-4 py-2 rounded-md font-medium transition-colors;
+        }
+        
+        .btn-primary {
+            @apply bg-blue-600 text-white hover:bg-blue-700;
+        }
+        
+        .btn-secondary {
+            @apply bg-gray-200 text-gray-700 hover:bg-gray-300;
+        }
+        
+        .card {
+            @apply bg-white rounded-lg shadow-md p-6;
+        }
+        
+        .form-input {
+            @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm">
+        <div class="app-container">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center">
+                    <a href="/" class="text-xl font-bold text-gray-800">Memory Map</a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    {% if user.is_authenticated %}
+                        <a href="/api/locations/" class="nav-link">My Locations</a>
+                        <a href="/docs/" class="nav-link">API Docs</a>
+                        <button onclick="logout()" class="btn btn-secondary">Logout</button>
+                    {% else %}
+                        <a href="/login/" class="btn btn-primary">Login</a>
+                        <a href="/register/" class="btn btn-secondary">Register</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="app-container py-8">
+        {% if messages %}
+            <div class="messages mb-8">
+                {% for message in messages %}
+                    <div class="p-4 {% if message.tags %}{{ message.tags }}{% endif %} rounded-md">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8">
+        <div class="app-container">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Memory Map</h3>
+                    <p class="text-gray-400">Save and share your favorite locations with Instagram integration.</p>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Quick Links</h3>
+                    <ul class="space-y-2">
+                        <li><a href="/docs/" class="text-gray-400 hover:text-white">API Documentation</a></li>
+                        <li><a href="/about/" class="text-gray-400 hover:text-white">About</a></li>
+                        <li><a href="/privacy/" class="text-gray-400 hover:text-white">Privacy Policy</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Contact</h3>
+                    <p class="text-gray-400">contact@memorymap.com</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        function logout() {
+            // Implement logout functionality
+            fetch('/api/users/logout/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            }).then(() => {
+                window.location.href = '/login/';
+            });
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+
+<!-- templates/core/index.html -->
+{% extends 'base.html' %}
+
+{% block title %}Memory Map - Home{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="text-center">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Welcome to Memory Map</h1>
+        <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+            Save and organize your favorite locations with Instagram integration.
+        </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="card">
+            <h2 class="text-xl font-semibold mb-4">Location Management</h2>
+            <p class="text-gray-600 mb-4">Save and manage your favorite locations.</p>
+            <a href="/api/locations/" class="btn btn-primary inline-block">View Locations</a>
+        </div>
+
+        <div class="card">
+            <h2 class="text-xl font-semibold mb-4">Instagram Integration</h2>
+            <p class="text-gray-600 mb-4">Import locations from your Instagram content.</p>
+            <a href="/instagram-import/" class="btn btn-primary inline-block">Import from Instagram</a>
+        </div>
+
+        <div class="card">
+            <h2 class="text-xl font-semibold mb-4">API Documentation</h2>
+            <p class="text-gray-600 mb-4">Explore our API documentation.</p>
+            <a href="/docs/" class="btn btn-primary inline-block">View Docs</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+<!-- templates/core/test_analyzer.html -->
+{% extends 'base.html' %}
+
+{% block title %}Instagram Reel Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .analyzer-container {
+        @apply max-w-2xl mx-auto;
+    }
+    
+    .result-container {
+        @apply mt-6 bg-white rounded-lg shadow-md p-6;
+    }
+    
+    .result-pre {
+        @apply bg-gray-50 p-4 rounded-md overflow-x-auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="analyzer-container">
+    <div class="card">
+        <h1 class="text-2xl font-bold text-gray-900 mb-6">Instagram Reel Analyzer</h1>
+        
+        <div class="space-y-4">
+            <div class="form-group">
+                <label for="reelUrl" class="block text-sm font-medium text-gray-700 mb-2">
+                    Instagram Reel URL
+                </label>
+                <input 
+                    type="text" 
+                    id="reelUrl" 
+                    class="form-input"
+                    placeholder="https://www.instagram.com/reel/example"
+                >
+            </div>
+
+            <button 
+                onclick="analyzeReel()" 
+                class="btn btn-primary w-full"
+            >
+                Analyze Reel
+            </button>
+        </div>
+
+        <div class="result-container" style="display: none;" id="resultContainer">
+            <h2 class="text-lg font-semibold mb-4">Analysis Result</h2>
+            <pre id="result" class="result-pre"></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function analyzeReel() {
+        const resultContainer = document.getElementById('resultContainer');
+        const resultPre = document.getElementById('result');
+        const url = document.getElementById('reelUrl').value;
+        
+        if (!url) {
+            alert('Please enter a URL');
+            return;
+        }
+        
+        resultPre.textContent = 'Analyzing...';
+        resultContainer.style.display = 'block';
+        
+        try {
+            const response = await fetch('/api/analyze-reel/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ url: url })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to analyze reel');
+            }
+            
+            resultPre.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+            resultPre.textContent = `Error: ${error.message}`;
+        }
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
+{% endblock %}

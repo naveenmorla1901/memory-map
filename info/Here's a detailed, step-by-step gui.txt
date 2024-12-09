@@ -1,0 +1,448 @@
+can we make some changes to the map page?, can we add working search function in maps, search for locations, and could able to save the locations?, please remove the instgram page which is not required for now, also we need to create a sqlite db in the fronted I will share you with schema and how they should be related in real time, they also should be linked to backend firebase database, please feel free to ask me more info if you are confused to work on it. for every changes we made please show exactly what lines we changes and what files we changed.
+Project name
+memory-map
+Project ID 
+memory-map-78ad6
+Project number 
+293613109189
+Web API Key 
+AIzaSyBOKAdTRz8J-9QSu8P7DEyLd6NAqqN0STI
+
+this is the backend data models i used.
+Data Models(mermaid graph)
+erDiagram
+    User ||--o{ UserProfile : has
+    User ||--o{ UserLocation : saves
+    Location ||--o{ UserLocation : referenced_by
+
+    User {
+        uuid id
+        string email
+        string username
+        datetime last_login
+        boolean is_active
+        string firebase_uid
+    }
+
+    Location {
+        uuid id
+        string name
+        float latitude
+        float longitude
+        text description
+        string category
+        boolean is_instagram_source
+        string instagram_url
+        datetime created_at
+        int version
+    }
+
+    UserLocation {
+        uuid id
+        uuid user_id
+        uuid location_id
+        string custom_name
+        boolean is_favorite
+        float notify_radius
+        datetime saved_at
+    }
+Firebase Data Structure
+{
+  "users": {
+    "user_id": {
+      "profile": {
+        "email": string,
+        "displayName": string,
+        "lastLogin": timestamp
+      },
+      "settings": {
+        "defaultMapView": {
+          "latitude": number,
+          "longitude": number,
+          "zoom": number
+        }
+      }
+    }
+  },
+  "locations": {
+    "location_id": {
+      "name": string,
+      "latitude": number,
+      "longitude": number,
+      "description": string,
+      "category": string,
+      "isInstagramSource": boolean,
+      "instagramUrl": string,
+      "createdAt": timestamp,
+      "createdBy": string,
+      "version": number
+    }
+  },
+  "user_locations": {
+    "user_id": {
+      "location_id": {
+        "customName": string,
+        "isFavorite": boolean,
+        "notifyRadius": number,
+        "savedAt": timestamp
+      }
+    }
+  }
+}
+
+// src/services/database/schema.ts
+import * as SQLite from 'expo-sqlite';
+
+export const initializeDatabase = async () => {
+  const db = SQLite.openDatabase('memorymap.db');
+
+  // Create tables
+  await db.transaction(tx => {
+    // Locations table
+    tx.executeSql(`
+      CREATE TABLE IF NOT EXISTS locations (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        description TEXT,
+        address TEXT,
+        category TEXT,
+        is_instagram_source INTEGER DEFAULT 0,
+        instagram_url TEXT,
+        date_posted TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        sync_status TEXT DEFAULT 'pending',
+        version INTEGER DEFAULT 1,
+        deleted INTEGER DEFAULT 0
+      );
+    `);
+
+    // User locations table - for personalization
+    tx.executeSql(`
+      CREATE TABLE IF NOT EXISTS user_locations (
+        id TEXT PRIMARY KEY,
+        location_id TEXT NOT NULL,
+        custom_name TEXT,
+        custom_description TEXT,
+        category TEXT,
+        is_favorite INTEGER DEFAULT 0,
+        notify_enabled INTEGER DEFAULT 0,
+        notify_radius REAL DEFAULT 1.0,
+        saved_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        sync_status TEXT DEFAULT 'pending',
+        version INTEGER DEFAULT 1,
+        deleted INTEGER DEFAULT 0,
+        FOREIGN KEY(location_id) REFERENCES locations(id)
+      );
+    `);
+
+    // Sync queue table
+    tx.executeSql(`
+      CREATE TABLE IF NOT EXISTS sync_queue (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        data TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        attempts INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending'
+      );
+    `);
+  });
+};
+
+// src/services/database/sync.ts
+import { Database } from 'expo-sqlite';
+import { firebase } from '../firebase';
+
+export class SyncService {
+  private db: Database;
+  
+  constructor() {
+    this.db = SQLite.openDatabase('memorymap.db');
+  }
+
+  async syncToBackend() {
+    try {
+      // Get pending sync items
+      const pendingItems = await this.getPendingSyncItems();
+      
+      for (const item of pendingItems) {
+        try {
+          switch (item.operation) {
+            case 'create':
+              await this.handleCreate(item);
+              break;
+            case 'update':
+              await this.handleUpdate(item);
+              break;
+            case 'delete':
+              await this.handleDelete(item);
+              break;
+          }
+          
+          await this.markSyncComplete(item.id);
+        } catch (error) {
+          await this.incrementSyncAttempt(item.id);
+        }
+      }
+    } catch (error) {
+      console.error('Sync failed:', error);
+    }
+  }
+
+  private async handleCreate(item: SyncQueueItem) {
+    const data = JSON.parse(item.data);
+    
+    // Send to Firebase/Backend
+    await firebase
+      .firestore()
+      .collection(item.entity_type)
+      .doc(item.entity_id)
+      .set(data);
+
+    // Update local sync status
+    await this.db.transaction(tx => {
+      tx.executeSql(
+        `UPDATE ${item.entity_type} 
+         SET sync_status = 'synced', 
+         version = version + 1 
+         WHERE id = ?`,
+        [item.entity_id]
+      );
+    });
+  }
+
+  private async handleUpdate(item: SyncQueueItem) {
+    const data = JSON.parse(item.data);
+    
+    // Get current version from Firebase
+    const doc = await firebase
+      .firestore()
+      .collection(item.entity_type)
+      .doc(item.entity_id)
+      .get();
+
+    if (doc.exists) {
+      const serverVersion = doc.data()?.version || 0;
+      const localVersion = data.version;
+
+      if (serverVersion > localVersion) {
+        // Handle conflict - server version is newer
+        await this.handleConflict(item, doc.data());
+      } else {
+        // Update server
+        await firebase
+          .firestore()
+          .collection(item.entity_type)
+          .doc(item.entity_id)
+          .update(data);
+      }
+    }
+  }
+
+  private async handleDelete(item: SyncQueueItem) {
+    await firebase
+      .firestore()
+      .collection(item.entity_type)
+      .doc(item.entity_id)
+      .delete();
+
+    // Mark as deleted locally
+    await this.db.transaction(tx => {
+      tx.executeSql(
+        `UPDATE ${item.entity_type} 
+         SET deleted = 1, 
+         sync_status = 'synced' 
+         WHERE id = ?`,
+        [item.entity_id]
+      );
+    });
+  }
+
+  private async handleConflict(item: SyncQueueItem, serverData: any) {
+    // Simple last-write-wins strategy
+    // In a real app, you might want more sophisticated conflict resolution
+    const localData = JSON.parse(item.data);
+    const mergedData = {
+      ...localData,
+      ...serverData,
+      version: serverData.version + 1
+    };
+
+    // Update both local and server
+    await this.db.transaction(tx => {
+      tx.executeSql(
+        `UPDATE ${item.entity_type} 
+         SET sync_status = 'synced', 
+         version = ?, 
+         updated_at = CURRENT_TIMESTAMP 
+         WHERE id = ?`,
+        [mergedData.version, item.entity_id]
+      );
+    });
+
+    await firebase
+      .firestore()
+      .collection(item.entity_type)
+      .doc(item.entity_id)
+      .update(mergedData);
+  }
+}
+
+// Types
+interface SyncQueueItem {
+  id: string;
+  entity_type: 'locations' | 'user_locations';
+  entity_id: string;
+  operation: 'create' | 'update' | 'delete';
+  data: string;
+  created_at: string;
+  attempts: number;
+  status: 'pending' | 'processing' | 'failed' | 'completed';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+### **Frontend Notes with OpenStreetMap Integration**
+This should a pp which can work in android and ios.
+Here is the updated and simplified guide, incorporating the OpenStreetMap integration:
+
+---
+
+### **Key Dependencies**
+- **Navigation**: `@react-navigation/native`  
+- **Maps**: `react-native-maps` / `OpenLayers` (for OpenStreetMap)  
+- **Storage**: `@react-native-async-storage/async-storage`  
+- **Database**: `expo-sqlite`  
+- **State Management**: `@reduxjs/toolkit`  
+- **Networking**: `axios`  
+- **Authentication**: `firebase/auth`  
+
+---
+
+### **Project Setup**
+
+#### **Development Environment**
+- **Node.js**: v16+  
+- **Expo CLI**: For React Native  
+- **Android Studio**: Android Development  
+- **Xcode**: iOS Development  
+- **VS Code**: With recommended extensions  
+
+#### **Configuration Files**
+- `app.config.js`: Expo configuration  
+- `tsconfig.json`: TypeScript settings  
+- `babel.config.js`: Babel configuration  
+- `.env.*`: Environment files for development and production  
+
+---
+
+### **OpenStreetMap Integration**
+
+#### **Basic Example**
+This minimal example shows how to set up an OpenStreetMap using `OpenLayers`:
+
+```html
+<!DOCTYPE HTML>
+<title>OpenStreetMap Example</title>
+<div id="map" style="height: 400px;"></div>
+<script src="https://cdn.jsdelivr.net/npm/openlayers"></script>
+<script>
+  const map = new OpenLayers.Map("map");
+  map.addLayer(new OpenLayers.Layer.OSM());
+  map.setCenter(
+    new OpenLayers.LonLat(-0.1279688, 51.5077286) // Coordinates for London
+      .transform(
+        new OpenLayers.Projection("EPSG:4326"), // WGS 1984
+        map.getProjectionObject() // Spherical Mercator
+      ),
+    10 // Zoom level
+  );
+</script>
+```
+
+#### **Adding Markers**
+To display a marker at a specific location:
+
+```html
+<div id="map" style="height: 400px;"></div>
+<script>
+  const lat = 47.35387;
+  const lon = 8.43609;
+  const zoom = 14;
+
+  const fromProjection = new OpenLayers.Projection("EPSG:4326");
+  const toProjection = new OpenLayers.Projection("EPSG:900913");
+  const position = new OpenLayers.LonLat(lon, lat).transform(fromProjection, toProjection);
+
+  const map = new OpenLayers.Map("map");
+  const mapnik = new OpenLayers.Layer.OSM();
+  map.addLayer(mapnik);
+
+  const markers = new OpenLayers.Layer.Markers("Markers");
+  map.addLayer(markers);
+  markers.addMarker(new OpenLayers.Marker(position));
+
+  map.setCenter(position, zoom);
+</script>
+```
+
+#### **Custom Tiles**
+If using custom tiles:
+
+```javascript
+const customLayer = new OpenLayers.Layer.OSM(
+  "Custom Layer",
+  "URL_TO_TILES/${z}/${x}/${y}.png",
+  { numZoomLevels: 19 }
+);
+map.addLayer(customLayer);
+```
+
+#### **Notes on Tile Usage**
+- OpenStreetMap tile servers are community-supported and may experience downtime.  
+- For heavy traffic, consider hosting your own tile server or setting up a cache system.  
+
+---
+
+### **Screen Flows**
+
+#### **Authentication Flow**
+- Login and Register screens with email/password and social login options.  
+
+#### **Main Map Screen**
+- Search bar, markers, current location button, and navigation options.  
+
+#### **Saved Locations**
+- Displays a list of saved locations with filters and sort options.  
+
+#### **Profile Screen**
+- User information and preferences with logout options.  
+
+---
+
+### **Code for Frontend Navigation**
+
+```javascript
+const MainTabs = {
+  Map: { icon: 'map', component: MapScreen },
+  Saved: { icon: 'bookmark', component: SavedLocationsScreen },
+  Profile: { icon: 'user', component: ProfileScreen },
+};
+```
+
+This guide includes OpenStreetMap implementation with simple examples to get started, ensuring a seamless integration with the rest of the project. Let me know if further details are needed!
