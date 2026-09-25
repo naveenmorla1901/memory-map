@@ -75,3 +75,34 @@ class LocationAnalysisSerializer(serializers.Serializer):
     likes = serializers.CharField(read_only=True)
     comments = serializers.CharField(read_only=True)
     date_posted = serializers.DateTimeField(read_only=True)
+
+
+class SavedLocationWriteSerializer(serializers.Serializer):
+    """
+    Flat input for creating/updating a saved location in one request: the
+    underlying Location fields plus the current user's UserLocation
+    preferences, combined because the app always edits them together.
+    """
+    name = serializers.CharField(max_length=255)
+    latitude = serializers.FloatField(min_value=-90, max_value=90)
+    longitude = serializers.FloatField(min_value=-180, max_value=180)
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+    category = serializers.CharField(required=False, allow_blank=True, default='')
+    address = serializers.CharField(required=False, allow_blank=True, default='')
+    is_instagram_source = serializers.BooleanField(required=False, default=False)
+    instagram_url = serializers.CharField(required=False, allow_blank=True, default='')
+
+    custom_name = serializers.CharField(required=False, allow_blank=True, default='')
+    custom_description = serializers.CharField(required=False, allow_blank=True, default='')
+    custom_category = serializers.CharField(required=False, allow_blank=True, default='')
+    notes = serializers.CharField(required=False, allow_blank=True, default='')
+    is_favorite = serializers.BooleanField(required=False, default=False)
+    notify_enabled = serializers.BooleanField(required=False, default=False)
+    notify_radius = serializers.FloatField(required=False, default=1.0, min_value=0.01)
+
+    def validate(self, data):
+        if data.get('is_instagram_source') and not data.get('instagram_url'):
+            raise serializers.ValidationError({
+                'instagram_url': 'Instagram URL is required for Instagram locations'
+            })
+        return data

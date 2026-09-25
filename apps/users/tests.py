@@ -4,7 +4,6 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth.models import User
-from .models import UserProfile
 
 class AuthenticationTests(APITestCase):
     def setUp(self):
@@ -21,11 +20,11 @@ class AuthenticationTests(APITestCase):
             password=self.user_data['password'],
             email=self.user_data['email']
         )
-        UserProfile.objects.create(user=self.user)
+        # UserProfile is created automatically by the post_save signal in apps/users/models.py
 
     def test_user_registration(self):
         """Test user registration process"""
-        url = reverse('users:register')
+        url = reverse('users-api:register')
         data = {
             'username': 'newuser',
             'password': 'NewPass123!',
@@ -42,7 +41,7 @@ class AuthenticationTests(APITestCase):
 
     def test_user_login(self):
         """Test user login process"""
-        url = reverse('users:token_obtain_pair')
+        url = reverse('users-api:token_obtain_pair')
         data = {
             'username': self.user_data['username'],
             'password': self.user_data['password']
@@ -56,7 +55,7 @@ class AuthenticationTests(APITestCase):
     def test_password_change(self):
         """Test password change process"""
         # First login to get token
-        login_url = reverse('users:token_obtain_pair')
+        login_url = reverse('users-api:token_obtain_pair')
         login_data = {
             'username': self.user_data['username'],
             'password': self.user_data['password']
@@ -65,7 +64,7 @@ class AuthenticationTests(APITestCase):
         token = response.data['access']
 
         # Try password change
-        url = reverse('users:change_password')
+        url = reverse('users-api:change_password')
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
         data = {
             'current_password': self.user_data['password'],
@@ -79,7 +78,7 @@ class AuthenticationTests(APITestCase):
     def test_get_user_data(self):
         """Test getting user data"""
         # First login to get token
-        login_url = reverse('users:token_obtain_pair')
+        login_url = reverse('users-api:token_obtain_pair')
         login_data = {
             'username': self.user_data['username'],
             'password': self.user_data['password']
@@ -88,7 +87,7 @@ class AuthenticationTests(APITestCase):
         token = response.data['access']
 
         # Get user data
-        url = reverse('users:user_data')
+        url = reverse('users-api:user_data')
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)

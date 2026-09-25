@@ -4,10 +4,6 @@ from pathlib import Path
 import sys
 from datetime import timedelta
 from dotenv import load_dotenv
-from django.core.cache import cache
-import json
-from pathlib import Path
-from django.conf import settings
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -118,6 +114,10 @@ AUTH_PASSWORD_VALIDATORS = [
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
+AUTHENTICATION_BACKENDS = [
+    'apps.users.backends.EmailOrUsernameModelBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 # JWT Settings
 SIMPLE_JWT = {
@@ -157,7 +157,6 @@ REDOC_SETTINGS = {
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'apps.core.middleware.firebase_auth.FirebaseAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
@@ -205,46 +204,13 @@ os.makedirs(STATIC_ROOT, exist_ok=True)
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 
 # API Documentation
-API_URL = 'http://localhost:8002'
+API_URL = os.getenv('API_URL', 'http://localhost:8002')
 
-
-# Firebase Configuration
-FIREBASE_CONFIG = {
-    'apiKey': "AIzaSyBOKAdTRz8J-9QSu8P7DEyLd6NAqqN0STI",
-    'authDomain': "memory-map-78ad6.firebaseapp.com",
-    'databaseURL': "https://memory-map-78ad6-default-rtdb.firebaseio.com",
-    'projectId': "memory-map-78ad6",
-    'storageBucket': "memory-map-78ad6.firebasestorage.app",
-    'messagingSenderId': "293613109189",
-    'appId': "1:293613109189:web:d2decb21864327465255ac",
-    'measurementId': "G-DSD59LSN6W"
-}
-
-# Make sure your serviceAccountKey.json path is correct
-FIREBASE_ADMIN_SDK_PATH = os.path.join(BASE_DIR, 'secrets', 'serviceAccountKey.json')
-
-try:
-    with open(FIREBASE_ADMIN_SDK_PATH) as f:
-        FIREBASE_ADMIN_CREDENTIALS = json.load(f)
-except FileNotFoundError:
-    FIREBASE_ADMIN_CREDENTIALS = None
-
-# Firebase Database Settings
-FIREBASE_DATABASE_URL = "https://memory-map-78ad6-default-rtdb.firebaseio.com"
-
-# Cache Configuration
-# settings.py
+# Cache Configuration - in-process cache, no external service required.
+# Swap to a Redis backend for multi-process deployments.
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
-        'OPTIONS': {
-            'socket_timeout': 5,
-            'retry_on_timeout': True,
-            'max_connections': 50,
-            'connection_class': 'redis.connection.Connection',  # Specify connection class
-            'retry_on_error': [TimeoutError, ConnectionError],
-        }
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
 }
 # Logging configuration
