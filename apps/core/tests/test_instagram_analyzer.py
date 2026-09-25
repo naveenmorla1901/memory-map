@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+import yt_dlp
 from django.contrib.auth.models import User
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -11,53 +12,75 @@ from apps.core.instagram.analyzer import (
 )
 
 
+def mock_youtube_dl(mock_ydl_cls, info=None, side_effect=None):
+    """`with yt_dlp.YoutubeDL(opts) as ydl: ydl.extract_info(...)` - wire the mock context manager."""
+    mock_ydl = mock_ydl_cls.return_value.__enter__.return_value
+    if side_effect is not None:
+        mock_ydl.extract_info.side_effect = side_effect
+    else:
+        mock_ydl.extract_info.return_value = info
+    return mock_ydl
+
+
 class DescriptionExtractorTests(TestCase):
     """
-    Instagram now serves a generic login-wall page (no og:description meta
-    tag) to unauthenticated requests - confirmed against a real, live public
-    reel URL during development. These tests pin that failure mode so a
-    regression (or Instagram changing behavior again) is caught.
+    Verified live against real public reel URLs during development: yt-dlp
+    reads the caption for most public reels anonymously, and fails cleanly
+    (DownloadError) for the rest (private/deleted/rate-limited) rather than
+    silently returning garbage - these tests pin both outcomes.
     """
 
     def setUp(self):
         self.extractor = InstagramReelDescriptionExtractor()
 
-    @patch('apps.core.instagram.analyzer.requests.Session.get')
-    def test_scrape_returns_none_on_login_wall_page(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, text='<html><head><title>Instagram</title></head><body>Log in</body></html>')
-        self.assertIsNone(self.extractor._extract_via_scrape('https://www.instagram.com/reel/abc123/'))
+    @patch('apps.core.instagram.analyzer.yt_dlp.YoutubeDL')
+    def test_extract_description_returns_caption_and_metadata(self, mock_ydl_cls):
+        mock_youtube_dl(mock_ydl_cls, info={
+            'description': 'Amazing sunset at Golden Gate Bridge!',
+            'upload_date': '20250101',
+            'like_count': 120,
+            'comment_count': 4,
+            'uploader': 'travelbot',
+        })
 
-    @patch('apps.core.instagram.analyzer.requests.Session.get')
-    def test_scrape_extracts_caption_when_meta_tag_present(self, mock_get):
-        html_body = (
-            '<html><head>'
-            '<meta property="og:description" content="120 likes, 4 comments - travelbot on January 1, 2025: '
-            'Amazing sunset at Golden Gate Bridge!">'
-            '</head></html>'
-        )
-        mock_get.return_value = MagicMock(status_code=200, text=html_body)
-        result = self.extractor._extract_via_scrape('https://www.instagram.com/reel/abc123/')
-        self.assertIsNotNone(result)
-        self.assertIn('Golden Gate Bridge', result['description'])
-        self.assertEqual(result['likes'], '120')
+        result = self.extractor.extract_description('https://www.instagram.com/reel/abc123/')
 
-    @patch('apps.core.instagram.analyzer.requests.Session.get')
-    def test_extract_description_raises_when_every_path_fails(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, text='<html><title>Instagram</title></html>')
+        self.assertEqual(result['description'], 'Amazing sunset at Golden Gate Bridge!')
+        self.assertEqual(result['date_posted'], '20250101')
+        self.assertEqual(result['likes'], 120)
+        self.assertEqual(result['comments'], 4)
+
+    @patch('apps.core.instagram.analyzer.yt_dlp.YoutubeDL')
+    def test_raises_when_caption_is_empty(self, mock_ydl_cls):
+        mock_youtube_dl(mock_ydl_cls, info={'description': ''})
         with self.assertRaises(InstagramExtractionError):
             self.extractor.extract_description('https://www.instagram.com/reel/abc123/')
 
-    @patch('apps.core.instagram.analyzer.requests.Session.get')
-    def test_oembed_used_when_token_configured_and_scrape_not_attempted_first(self, mock_get):
-        extractor = InstagramReelDescriptionExtractor(oembed_access_token='app-id|client-token')
-        mock_get.return_value = MagicMock(
-            status_code=200,
-            json=lambda: {'html': '<blockquote><p>A trip to the Eiffel Tower.</p></blockquote>'},
+    @patch('apps.core.instagram.analyzer.yt_dlp.YoutubeDL')
+    def test_raises_on_download_error(self, mock_ydl_cls):
+        mock_youtube_dl(
+            mock_ydl_cls,
+            side_effect=yt_dlp.utils.DownloadError('Instagram sent an empty media response'),
         )
-        result = extractor.extract_description('https://www.instagram.com/reel/abc123/')
-        self.assertIn('Eiffel Tower', result['description'])
-        # oEmbed succeeded, so the scrape fallback should never have been called.
-        mock_get.assert_called_once()
+        with self.assertRaises(InstagramExtractionError):
+            self.extractor.extract_description('https://www.instagram.com/reel/abc123/')
+
+    @patch('apps.core.instagram.analyzer.yt_dlp.YoutubeDL')
+    def test_passes_cookies_file_through_to_ytdlp(self, mock_ydl_cls):
+        mock_youtube_dl(mock_ydl_cls, info={'description': 'text'})
+        extractor = InstagramReelDescriptionExtractor(cookies_file='/tmp/cookies.txt')
+
+        extractor.extract_description('https://www.instagram.com/reel/abc123/')
+
+        opts = mock_ydl_cls.call_args[0][0]
+        self.assertEqual(opts['cookiefile'], '/tmp/cookies.txt')
+
+    @patch('apps.core.instagram.analyzer.yt_dlp.YoutubeDL')
+    def test_does_not_download_video_by_default(self, mock_ydl_cls):
+        mock_youtube_dl(mock_ydl_cls, info={'description': 'text'})
+        self.extractor.extract_description('https://www.instagram.com/reel/abc123/')
+        opts = mock_ydl_cls.call_args[0][0]
+        self.assertTrue(opts['skip_download'])
 
 
 class LocationExtractorTests(TestCase):
@@ -90,6 +113,14 @@ class LocationExtractorTests(TestCase):
         extractor = LocationExtractor(api_key='fake-key')
         self.assertEqual(extractor.extract_locations('some text'), [])
 
+    @patch('apps.core.instagram.analyzer.genai.Client')
+    def test_empty_api_key_does_not_crash_client_construction(self, mock_client_cls):
+        # genai.Client(api_key='') raises ValueError in the real SDK - GOOGLE_API_KEY
+        # is documented as optional, so this must degrade gracefully, not 500.
+        extractor = LocationExtractor(api_key='')
+        self.assertEqual(extractor.extract_locations('A trip to the Eiffel Tower.'), [])
+        mock_client_cls.assert_not_called()
+
 
 class AnalyzeReelViewTests(TestCase):
     """Verifies the API contract the mobile app's share-to-save flow depends on:
@@ -101,7 +132,7 @@ class AnalyzeReelViewTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
-    @patch('apps.core.views.InstagramReelAnalyzer')
+    @patch('apps.core.services.reel_cache.InstagramReelAnalyzer')
     def test_extraction_failure_returns_manual_required(self, mock_analyzer_cls):
         mock_analyzer_cls.return_value.analyze_reel.side_effect = InstagramExtractionError('blocked')
         response = self.client.post('/api/v1/analyze-reel/', {'url': 'https://www.instagram.com/reel/abc123/'}, format='json')
@@ -109,14 +140,14 @@ class AnalyzeReelViewTests(TestCase):
         self.assertEqual(response.data['status'], 'manual_required')
         self.assertEqual(response.data['url'], 'https://www.instagram.com/reel/abc123/')
 
-    @patch('apps.core.views.InstagramReelAnalyzer')
+    @patch('apps.core.services.reel_cache.InstagramReelAnalyzer')
     def test_no_locations_found_returns_manual_required(self, mock_analyzer_cls):
         mock_analyzer_cls.return_value.analyze_reel.return_value = {'description': 'just a sunset', 'locations': []}
         response = self.client.post('/api/v1/analyze-reel/', {'url': 'https://www.instagram.com/reel/abc123/'}, format='json')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['status'], 'manual_required')
 
-    @patch('apps.core.views.InstagramReelAnalyzer')
+    @patch('apps.core.services.reel_cache.InstagramReelAnalyzer')
     def test_successful_extraction_returns_locations(self, mock_analyzer_cls):
         mock_analyzer_cls.return_value.analyze_reel.return_value = {
             'description': 'A trip to the Eiffel Tower.',
@@ -127,3 +158,21 @@ class AnalyzeReelViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['status'], 'new')
         self.assertEqual(len(response.data['locations']), 1)
+
+    @patch('apps.core.services.reel_cache.InstagramReelAnalyzer')
+    def test_second_request_for_same_url_uses_the_cache(self, mock_analyzer_cls):
+        mock_analyzer_cls.return_value.analyze_reel.return_value = {
+            'description': 'A trip to the Eiffel Tower.',
+            'date_posted': None,
+            'locations': [{'name': 'Eiffel Tower', 'type': 'landmark', 'category': 'monument', 'coordinates': None}],
+        }
+        url = 'https://www.instagram.com/reel/abc123/'
+
+        first = self.client.post('/api/v1/analyze-reel/', {'url': url}, format='json')
+        second = self.client.post('/api/v1/analyze-reel/', {'url': url}, format='json')
+
+        self.assertEqual(first.data['status'], 'new')
+        self.assertEqual(second.data['status'], 'new')
+        self.assertEqual(second.data['locations'], first.data['locations'])
+        # The whole point of the cache: yt-dlp + Gemini only ran once.
+        mock_analyzer_cls.return_value.analyze_reel.assert_called_once()

@@ -1,6 +1,5 @@
 # apps/core/views.py
 import logging
-from datetime import datetime
 
 from django.conf import settings
 from django.db.models import Q
@@ -11,7 +10,7 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .instagram.analyzer import InstagramExtractionError, InstagramReelAnalyzer
+from .instagram.analyzer import InstagramExtractionError
 from .models import Location, UserLocation
 from .serializers import (
     LocationAnalysisSerializer,
@@ -19,6 +18,7 @@ from .serializers import (
     SavedLocationWriteSerializer,
     UserLocationSerializer,
 )
+from .services.reel_cache import get_reel_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -28,18 +28,6 @@ __all__ = [
     'analyze_instagram_reel',
     'analyze_and_save_reel',
 ]
-
-
-def _parse_instagram_date(date_str):
-    """Best-effort parse of the date the analyzer scrapes off an Instagram page."""
-    if not date_str:
-        return None
-    for fmt in ('%B %d, %Y', '%Y-%m-%d', '%Y-%m-%dT%H:%M:%S'):
-        try:
-            return datetime.strptime(date_str, fmt)
-        except (ValueError, TypeError):
-            continue
-    return None
 
 
 class LocationViewSet(viewsets.ModelViewSet):
@@ -200,8 +188,7 @@ def analyze_instagram_reel(request):
         })
 
     try:
-        analyzer = InstagramReelAnalyzer(settings.GOOGLE_API_KEY, settings.INSTAGRAM_OEMBED_ACCESS_TOKEN)
-        result = analyzer.analyze_reel(url)
+        analysis = get_reel_analysis(url, settings.GOOGLE_API_KEY, settings.INSTAGRAM_YTDLP_COOKIES_FILE or None)
     except InstagramExtractionError as e:
         # Expected outcome, not a bug: the caption couldn't be read, so the
         # client should fall back to letting the user pick a location manually.
@@ -210,7 +197,7 @@ def analyze_instagram_reel(request):
         logger.error(f"Instagram analysis error: {e}", exc_info=True)
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not result.get('locations'):
+    if not analysis['locations']:
         return Response({
             'status': 'manual_required',
             'url': url,
@@ -219,11 +206,11 @@ def analyze_instagram_reel(request):
 
     return Response({
         'status': 'new',
-        'locations': result['locations'],
+        'locations': analysis['locations'],
         'url': url,
         'metadata': {
-            'date_posted': result.get('date_posted'),
-            'description': result.get('description'),
+            'date_posted': analysis['date_posted'],
+            'description': analysis['description'],
         },
     })
 
@@ -273,15 +260,14 @@ def analyze_and_save_reel(request):
         })
 
     try:
-        analyzer = InstagramReelAnalyzer(settings.GOOGLE_API_KEY, settings.INSTAGRAM_OEMBED_ACCESS_TOKEN)
-        result = analyzer.analyze_reel(url)
+        analysis = get_reel_analysis(url, settings.GOOGLE_API_KEY, settings.INSTAGRAM_YTDLP_COOKIES_FILE or None)
     except InstagramExtractionError as e:
         return Response({'status': 'manual_required', 'url': url, 'reason': e.reason})
     except Exception as e:
         logger.error(f"Instagram analysis error: {e}", exc_info=True)
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not result.get('locations'):
+    if not analysis['locations']:
         return Response({
             'status': 'manual_required',
             'url': url,
@@ -289,7 +275,7 @@ def analyze_and_save_reel(request):
         })
 
     saved = []
-    for loc in result['locations']:
+    for loc in analysis['locations']:
         if not isinstance(loc, dict):
             continue
         coordinates = loc.get('coordinates') or {}
@@ -302,12 +288,12 @@ def analyze_and_save_reel(request):
             name=loc.get('name', 'Unnamed Location'),
             latitude=latitude,
             longitude=longitude,
-            description=result.get('description', ''),
+            description=analysis.get('description', ''),
             category=loc.get('category') or category,
             address=loc.get('name', ''),
             is_instagram_source=True,
             instagram_url=url,
-            date_posted=_parse_instagram_date(result.get('date_posted')),
+            date_posted=analysis['date_posted'],
         )
         user_location = UserLocation.objects.create(
             user=request.user,

@@ -1,5 +1,6 @@
 # apps/core/models.py
 import uuid
+from datetime import timedelta
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -137,24 +138,49 @@ class UserLocation(models.Model):
     def __str__(self):
         return f"{self.user.username}'s save of {self.location.name}"
     
-class InstagramReel(models.Model):
+class InstagramReelCache(models.Model):
+    """
+    Caches the result of analyzing an Instagram reel URL - its caption and
+    the locations Gemini extracted from it - keyed by URL. Extraction (a
+    yt-dlp fetch plus a Gemini call) is slow and not free, so when the same
+    reel gets shared again (a viral reel, or the same user re-sharing) we
+    reuse this instead of re-running the whole pipeline.
+    """
+    STATUS_ANALYZED = 'analyzed'
+    STATUS_NO_LOCATIONS = 'no_locations'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_ANALYZED, 'Analyzed'),
+        (STATUS_NO_LOCATIONS, 'No Locations Found'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+
+    # How long a cache entry is trusted before we'll re-analyze the URL.
+    # Failures get a much shorter window, since those are more likely to be
+    # transient (rate limiting, a momentary yt-dlp/Gemini error) than a
+    # permanently broken URL.
+    SUCCESS_MAX_AGE_DAYS = 30
+    FAILURE_MAX_AGE_DAYS = 1
+
     url = models.URLField(unique=True)
-    location = models.ForeignKey(Location, related_name='reels', on_delete=models.CASCADE)
     description = models.TextField(blank=True)
-    likes = models.IntegerField(default=0)
-    comments = models.IntegerField(default=0)
+    locations = models.JSONField(default=list, blank=True)
     date_posted = models.DateTimeField(null=True, blank=True)
-    date_extracted = models.DateTimeField(default=timezone.now)
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(default=timezone.now)
-    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    failure_reason = models.TextField(blank=True)
+    analyzed_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
     class Meta:
         indexes = [
             models.Index(fields=['url']),
-            models.Index(fields=['created_by']),
-            models.Index(fields=['date_posted']),
+            models.Index(fields=['status']),
         ]
-        ordering = ['-date_posted']
+        ordering = ['-analyzed_at']
 
     def __str__(self):
-        return f"Reel by {self.created_by.username} at {self.location.name}"
+        return f"{self.url} ({self.status})"
+
+    def is_stale(self) -> bool:
+        max_age = self.FAILURE_MAX_AGE_DAYS if self.status == self.STATUS_FAILED else self.SUCCESS_MAX_AGE_DAYS
+        return (timezone.now() - self.analyzed_at) > timedelta(days=max_age)

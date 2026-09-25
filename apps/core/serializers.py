@@ -1,13 +1,6 @@
 # apps/core/serializers.py
 from rest_framework import serializers
-from .models import Location, InstagramReel, UserLocation
-
-class InstagramReelSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = InstagramReel
-        fields = ['id', 'url', 'description', 'likes', 'comments',
-                 'date_posted', 'date_extracted', 'location']
-        read_only_fields = ['id', 'date_extracted']
+from .models import Location, UserLocation
 
 class LocationSerializer(serializers.ModelSerializer):
     class Meta:

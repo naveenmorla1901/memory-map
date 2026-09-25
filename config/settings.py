@@ -198,11 +198,11 @@ CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 # Google API key for Instagram location extraction
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
 
-# Optional: a Meta developer app access token ("{app-id}|{client-token}") with the
-# oEmbed Read permission (requires App Review), used to reliably read an Instagram
-# reel's caption. Without it, caption extraction falls back to scraping the reel
-# page directly, which Instagram usually blocks for unauthenticated requests.
-INSTAGRAM_OEMBED_ACCESS_TOKEN = os.getenv('INSTAGRAM_OEMBED_ACCESS_TOKEN', '')
+# Optional path to a Netscape-format cookies.txt exported from a logged-in
+# Instagram session, passed to yt-dlp when reading a reel. Works anonymously
+# for a good share of public reels without this, but a logged-in session is
+# much more reliable and is required for some content. See the README.
+INSTAGRAM_YTDLP_COOKIES_FILE = os.getenv('INSTAGRAM_YTDLP_COOKIES_FILE', '')
 
 # Create necessary directories
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)

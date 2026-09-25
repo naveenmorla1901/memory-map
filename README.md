@@ -14,7 +14,7 @@ mobile app: user accounts (JWT auth) and saved locations.
    ```
 
 2. Copy `.env.example` to `.env` and fill in `SECRET_KEY`. `GOOGLE_API_KEY` and
-   `INSTAGRAM_OEMBED_ACCESS_TOKEN` are optional and only affect the Instagram-reel
+   `INSTAGRAM_YTDLP_COOKIES_FILE` are optional and only affect the Instagram-reel
    location-extraction endpoints (auth and saved locations work fully without them):
 
    ```bash
@@ -23,13 +23,18 @@ mobile app: user accounts (JWT auth) and saved locations.
 
    - `GOOGLE_API_KEY`: a [Gemini API key](https://aistudio.google.com/apikey) - used to pull
      structured location data out of a reel's caption once we have it.
-   - `INSTAGRAM_OEMBED_ACCESS_TOKEN`: without this, reading a reel's caption at all almost always
-     fails - Instagram blocks unauthenticated scraping. The reliable path is a Meta developer app
-     with the "oEmbed Read" permission (requires [App Review](https://developers.facebook.com/docs/app-review)),
-     giving you an access token as `{app-id}|{client-token}`. Until you set this up,
-     `/api/v1/analyze-reel/` and `/api/v1/analyze-save-reel/` will just respond with
-     `{"status": "manual_required", ...}` instead of extracted locations - by design, so the app
-     falls back to letting the user pick the location themselves rather than erroring.
+   - `INSTAGRAM_YTDLP_COOKIES_FILE`: reading a reel's caption uses [yt-dlp](https://github.com/yt-dlp/yt-dlp),
+     which works anonymously for a good share of public reels but is much more reliable with a
+     logged-in session. Export cookies from a logged-in Instagram account (a browser extension
+     like "Get cookies.txt" works) to a Netscape-format file and point this at it. Until you set
+     this up, some reels will fail to analyze and `/api/v1/analyze-reel/` /
+     `/api/v1/analyze-save-reel/` will respond with `{"status": "manual_required", ...}` instead
+     of extracted locations - by design, so the app falls back to letting the user pick the
+     location themselves rather than erroring.
+
+   Analyzing the same reel URL twice (someone re-shares a viral reel, say) doesn't re-run yt-dlp +
+   Gemini - results are cached by URL in `InstagramReelCache` for 30 days (failures for 1 day, so a
+   transient block doesn't get permanently stuck). See `apps/core/services/reel_cache.py`.
 
 3. Run migrations and start the server:
 

@@ -1,12 +1,9 @@
 # apps/core/instagram/analyzer.py
-import html
 import json
 import logging
-import re
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-import requests
+import yt_dlp
 from google import genai
 from google.genai import types
 
@@ -16,8 +13,9 @@ logger = logging.getLogger(__name__)
 class InstagramExtractionError(Exception):
     """
     Raised when we couldn't get a reel's caption text at all. This is an
-    expected, non-bug outcome (Instagram blocks unauthenticated scraping),
-    so callers should treat it as "fall back to manual entry", not a 500.
+    expected, non-bug outcome (a private/deleted reel, or Instagram
+    rate-limiting/blocking the request), so callers should treat it as
+    "fall back to manual entry", not a 500.
     """
     def __init__(self, reason: str):
         self.reason = reason
@@ -25,12 +23,12 @@ class InstagramExtractionError(Exception):
 
 
 class InstagramReelAnalyzer:
-    def __init__(self, google_api_key: str, oembed_access_token: Optional[str] = None):
-        """Initialize with a Gemini API key and an optional Meta oEmbed access token."""
-        self.description_extractor = InstagramReelDescriptionExtractor(oembed_access_token)
+    def __init__(self, google_api_key: str, ytdlp_cookies_file: Optional[str] = None):
+        """Initialize with a Gemini API key and an optional yt-dlp cookies file."""
+        self.description_extractor = InstagramReelDescriptionExtractor(ytdlp_cookies_file)
         self.location_extractor = LocationExtractor(google_api_key)
 
-    def analyze_reel(self, url: str) -> Optional[Dict]:
+    def analyze_reel(self, url: str) -> Dict:
         """
         Analyze an Instagram reel: fetch its caption, then extract locations
         from it. Raises InstagramExtractionError if the caption itself
@@ -43,164 +41,56 @@ class InstagramReelAnalyzer:
 
 class InstagramReelDescriptionExtractor:
     """
-    Gets the caption text off an Instagram reel URL. Instagram serves a
-    login wall to unauthenticated/non-browser requests, so a raw HTML
-    scrape mostly doesn't work anymore - it's kept as a zero-config,
-    best-effort attempt. The reliable path is Meta's oEmbed API, which
-    needs a Meta developer app that has been through App Review for the
-    "oEmbed Read" permission (see README). Without that token configured,
-    this will usually raise InstagramExtractionError, which is expected -
-    the app is meant to fall back to letting the user pick the location
-    manually.
+    Gets a reel's caption (and, later, its video - see the `download`
+    option) via yt-dlp, which is maintained specifically to track
+    Instagram's frequently-changing internals. Works anonymously for a
+    majority of public reels in practice; for the rest (and for better
+    reliability generally), point `ytdlp_cookies_file` at a Netscape-format
+    cookies.txt exported from a logged-in Instagram session - see the
+    backend README.
     """
 
-    OEMBED_URL = 'https://graph.facebook.com/v21.0/instagram_oembed'
+    def __init__(self, cookies_file: Optional[str] = None):
+        self.cookies_file = cookies_file
 
-    def __init__(self, oembed_access_token: Optional[str] = None):
-        self.oembed_access_token = oembed_access_token
-        self.session = requests.Session()
-        self.session.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'X-IG-App-ID': '936619743392459',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Origin': 'https://www.instagram.com',
-            'Connection': 'keep-alive',
-            'Referer': 'https://www.instagram.com/',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
+    def extract_description(self, url: str, download: bool = False) -> Dict:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': not download,
         }
+        if self.cookies_file:
+            ydl_opts['cookiefile'] = self.cookies_file
 
-    def extract_description(self, url: str) -> Dict:
-        if self.oembed_access_token:
-            reel_data = self._extract_via_oembed(url)
-            if reel_data:
-                return reel_data
-
-        reel_data = self._extract_via_scrape(url)
-        if reel_data:
-            return reel_data
-
-        raise InstagramExtractionError(
-            "Couldn't read this reel's caption automatically - Instagram blocks "
-            "unauthenticated requests. Add the location manually, or configure "
-            "INSTAGRAM_OEMBED_ACCESS_TOKEN for reliable extraction."
-        )
-
-    def _extract_via_oembed(self, url: str) -> Optional[Dict]:
-        """
-        Best-effort: Meta's oEmbed API returns an embed <blockquote> whose
-        fallback HTML includes the caption text. This path needs real Meta
-        App Review credentials to work at all, so it can't be exercised in
-        development without them - it's written defensively (any unexpected
-        response shape just falls through to the scrape/manual-entry path
-        rather than raising).
-        """
         try:
-            response = self.session.get(
-                self.OEMBED_URL,
-                params={'url': url, 'access_token': self.oembed_access_token},
-                timeout=10,
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=download)
+        except yt_dlp.utils.DownloadError as e:
+            logger.info(f"yt-dlp could not read {url}: {e}")
+            raise InstagramExtractionError(
+                "Couldn't read this reel automatically - it may be private, deleted, or "
+                "Instagram is blocking the request right now. Add the location manually."
+            ) from e
+        except Exception as e:
+            logger.error(f"Unexpected error reading {url}: {e}", exc_info=True)
+            raise InstagramExtractionError(
+                "Something went wrong reading this reel. Add the location manually."
+            ) from e
+
+        description = (info.get('description') or '').strip()
+        if not description:
+            raise InstagramExtractionError(
+                "This reel doesn't have a caption to read locations from. Add the location manually."
             )
-            if response.status_code != 200:
-                logger.info(f"oEmbed request failed with status {response.status_code}: {response.text[:200]}")
-                return None
 
-            embed_html = response.json().get('html', '')
-            caption = re.sub(r'<[^>]+>', ' ', embed_html)
-            caption = html.unescape(caption)
-            caption = re.sub(r'\s+', ' ', caption).strip()
-            if not caption:
-                return None
-
-            cleaned_text, metadata = self._clean_caption(caption)
-            return {
-                'url': url,
-                'likes': metadata['likes'],
-                'comments': metadata['comments'],
-                'date_posted': metadata['date'],
-                'date_extracted': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'description': cleaned_text or caption,
-            }
-        except Exception as e:
-            logger.warning(f"oEmbed extraction failed: {e}")
-            return None
-
-    def _extract_via_scrape(self, url: str) -> Optional[Dict]:
-        try:
-            response = self.session.get(url, timeout=10)
-        except Exception as e:
-            logger.warning(f"Instagram scrape request failed: {e}")
-            return None
-
-        if response.status_code != 200:
-            return None
-
-        meta_desc = re.search(r'<meta property="og:description" content="([^"]+)"', response.text)
-        if not meta_desc:
-            # This is the common case now: Instagram served its generic
-            # login-wall page instead of the post, which has no og:description.
-            return None
-
-        cleaned_text, metadata = self._clean_caption(meta_desc.group(1))
         return {
             'url': url,
-            'likes': metadata['likes'],
-            'comments': metadata['comments'],
-            'date_posted': metadata['date'],
-            'date_extracted': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'description': cleaned_text,
+            'description': description,
+            'date_posted': info.get('upload_date'),  # 'YYYYMMDD' string, or None
+            'likes': info.get('like_count'),
+            'comments': info.get('comment_count'),
+            'uploader': info.get('uploader'),
         }
-
-    def _clean_caption(self, text: str) -> Tuple[str, Dict]:
-        """Strip the "N likes, M comments - username on <date>: " prefix Instagram's
-        og:description used to include, and normalize the remaining caption text."""
-        metadata = {'likes': None, 'comments': None, 'date': None}
-
-        stats_match = re.match(r'(\d+[KM]?)\s*likes?,\s*(\d+[KM]?)\s*comments?', text)
-        if stats_match:
-            metadata['likes'] = stats_match.group(1)
-            metadata['comments'] = stats_match.group(2)
-
-        date_match = re.search(r'on ([A-Z][a-z]+ \d+, \d{4}):', text)
-        if date_match:
-            metadata['date'] = date_match.group(1)
-
-        if ' - ' in text:
-            text = text.split(' - ', 1)[1]
-        if ': ' in text:
-            text = text.split(': ', 1)[1]
-
-        def clean_text(segment: str) -> str:
-            segment = re.sub(r'\\u[0-9a-fA-F]{4}', '', segment)
-            segment = re.sub(r'\ud83d[\ude00-\udfff]', '', segment)
-            segment = re.sub(r'\ud83e[\udd00-\udfff]', '', segment)
-            segment = segment.encode('ascii', 'ignore').decode('ascii')
-            segment = html.unescape(segment)
-            segment = segment.replace('&quot;', '"').replace('&amp;', '&')
-            segment = re.sub(r'http\S+', '', segment)
-            segment = re.sub(r'@\w+', '', segment)
-            segment = re.sub(r'#\w+', '', segment)
-            segment = re.sub(r'\s+', ' ', segment)
-            segment = re.sub(r'\s*([,.])\s*', r'\1 ', segment)
-            segment = re.sub(r'[^\w\s.,!?()-]', '', segment)
-            return segment.strip()
-
-        cleaned_sentences = []
-        for sentence in text.split('.'):
-            cleaned = clean_text(sentence)
-            if cleaned and len(cleaned) > 5:
-                cleaned = re.sub(r'^\s*[•\-*]\s*', '', cleaned)
-                cleaned = re.sub(r'^\d+\.\s*', '', cleaned)
-                cleaned_sentences.append(cleaned.strip())
-
-        final_text = '. '.join(s for s in cleaned_sentences if s)
-        if final_text and not final_text.endswith('.'):
-            final_text += '.'
-
-        return final_text, metadata
 
 
 class LocationExtractor:
@@ -250,9 +140,15 @@ Input text:
     }
 
     def __init__(self, api_key: str):
-        self.client = genai.Client(api_key=api_key)
+        # genai.Client raises ValueError on an empty key, and GOOGLE_API_KEY
+        # is documented as optional - so a missing key means "always fetch
+        # the caption, never extract locations from it", not a crash.
+        self.client = genai.Client(api_key=api_key) if api_key else None
 
     def extract_locations(self, text: str) -> List[Dict]:
+        if not self.client:
+            logger.info("GOOGLE_API_KEY is not configured - skipping location extraction.")
+            return []
         try:
             response = self.client.models.generate_content(
                 model=self.MODEL,

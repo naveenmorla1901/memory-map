@@ -1,6 +1,6 @@
 # apps/core/admin.py
 from django.contrib import admin
-from .models import Location, InstagramReel, UserLocation
+from .models import Location, InstagramReelCache, UserLocation
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
     list_display = ('name', 'location_type', 'category', 'is_instagram_source', 'created_at')
@@ -59,9 +59,9 @@ class UserLocationAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user', 'location')
 
-@admin.register(InstagramReel)
-class InstagramReelAdmin(admin.ModelAdmin):
-    list_display = ('url', 'created_by', 'date_posted', 'likes', 'comments')
-    list_filter = ('date_posted', 'created_at')
+@admin.register(InstagramReelCache)
+class InstagramReelCacheAdmin(admin.ModelAdmin):
+    list_display = ('url', 'status', 'date_posted', 'analyzed_at')
+    list_filter = ('status', 'analyzed_at')
     search_fields = ('url', 'description')
-    readonly_fields = ('date_extracted', 'created_at')
+    readonly_fields = ('analyzed_at', 'created_at')
