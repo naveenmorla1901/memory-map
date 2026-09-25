@@ -11,7 +11,7 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .instagram.analyzer import InstagramReelAnalyzer
+from .instagram.analyzer import InstagramExtractionError, InstagramReelAnalyzer
 from .models import Location, UserLocation
 from .serializers import (
     LocationAnalysisSerializer,
@@ -200,15 +200,22 @@ def analyze_instagram_reel(request):
         })
 
     try:
-        analyzer = InstagramReelAnalyzer(settings.GOOGLE_API_KEY)
+        analyzer = InstagramReelAnalyzer(settings.GOOGLE_API_KEY, settings.INSTAGRAM_OEMBED_ACCESS_TOKEN)
         result = analyzer.analyze_reel(url)
+    except InstagramExtractionError as e:
+        # Expected outcome, not a bug: the caption couldn't be read, so the
+        # client should fall back to letting the user pick a location manually.
+        return Response({'status': 'manual_required', 'url': url, 'reason': e.reason})
     except Exception as e:
         logger.error(f"Instagram analysis error: {e}", exc_info=True)
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not result or not result.get('locations'):
-        return Response({'error': 'Could not extract any locations from this reel'},
-                         status=status.HTTP_400_BAD_REQUEST)
+    if not result.get('locations'):
+        return Response({
+            'status': 'manual_required',
+            'url': url,
+            'reason': 'Read the caption but could not identify any specific locations in it.',
+        })
 
     return Response({
         'status': 'new',
@@ -266,14 +273,20 @@ def analyze_and_save_reel(request):
         })
 
     try:
-        analyzer = InstagramReelAnalyzer(settings.GOOGLE_API_KEY)
+        analyzer = InstagramReelAnalyzer(settings.GOOGLE_API_KEY, settings.INSTAGRAM_OEMBED_ACCESS_TOKEN)
         result = analyzer.analyze_reel(url)
+    except InstagramExtractionError as e:
+        return Response({'status': 'manual_required', 'url': url, 'reason': e.reason})
     except Exception as e:
         logger.error(f"Instagram analysis error: {e}", exc_info=True)
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not result or not result.get('locations'):
-        return Response({'error': 'No locations found in reel'}, status=status.HTTP_400_BAD_REQUEST)
+    if not result.get('locations'):
+        return Response({
+            'status': 'manual_required',
+            'url': url,
+            'reason': 'Read the caption but could not identify any specific locations in it.',
+        })
 
     saved = []
     for loc in result['locations']:

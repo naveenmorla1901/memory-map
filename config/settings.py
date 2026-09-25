@@ -198,6 +198,12 @@ CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 # Google API key for Instagram location extraction
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
 
+# Optional: a Meta developer app access token ("{app-id}|{client-token}") with the
+# oEmbed Read permission (requires App Review), used to reliably read an Instagram
+# reel's caption. Without it, caption extraction falls back to scraping the reel
+# page directly, which Instagram usually blocks for unauthenticated requests.
+INSTAGRAM_OEMBED_ACCESS_TOKEN = os.getenv('INSTAGRAM_OEMBED_ACCESS_TOKEN', '')
+
 # Create necessary directories
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 os.makedirs(STATIC_ROOT, exist_ok=True)
