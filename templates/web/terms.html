@@ -1,0 +1,29 @@
+{% extends "web/base.html" %}
+{% block title %}Terms of Service - {{ site_name }}{% endblock %}
+{% block content %}
+<h1>Terms of Service</h1>
+<p class="muted">Last updated: September 26, 2026</p>
+
+<p>By creating an account or using {{ site_name }}, you agree to these terms.</p>
+
+<h2>Your account</h2>
+<p>You're responsible for keeping your password safe and for what happens under your account. Give accurate information when you sign up. You can delete your account at any time.</p>
+
+<h2>Your content</h2>
+<p>The places, notes, and other content you save are yours. You give us permission to store and process them only to run the app for you. Don't use {{ site_name }} to store anything unlawful.</p>
+
+<h2>Content from other services</h2>
+<p>When you share an Instagram reel, the app reads its public caption to suggest places. Suggestions are generated automatically and can be wrong - check a place before you travel to it. We're not affiliated with Instagram or Meta, and your use of Instagram is governed by their terms.</p>
+
+<h2>Acceptable use</h2>
+<p>Don't try to disrupt the service, access other people's data, overload our systems, or use the app in automated ways it wasn't built for.</p>
+
+<h2>Availability</h2>
+<p>We work to keep {{ site_name }} running and your data safe, but the service is provided "as is", without warranties, and may change or be interrupted. To the extent the law allows, we aren't liable for indirect or consequential losses from using it.</p>
+
+<h2>Changes</h2>
+<p>We may update these terms. If a change is significant, we'll let you know in the app. Continuing to use {{ site_name }} after an update means you accept the new terms.</p>
+
+<h2>Contact</h2>
+<p><a href="mailto:{{ support_email }}">{{ support_email }}</a></p>
+{% endblock %}

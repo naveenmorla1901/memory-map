@@ -1,0 +1,28 @@
+{% extends "web/base.html" %}
+{% block title %}Delete your account - {{ site_name }}{% endblock %}
+{% block content %}
+<h1>Delete your account</h1>
+<p class="lead">This permanently deletes your {{ site_name }} account and every place you've saved. It can't be undone.</p>
+<p class="muted">You can also do this in the app: Profile → Delete account.</p>
+
+<form class="card" method="post" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}
+    <ul class="errors">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <label for="{{ form.email.id_for_label }}">Email</label>
+  {{ form.email }}
+  {% if form.email.errors %}<ul class="errors">{% for e in form.email.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+
+  <label for="{{ form.password.id_for_label }}">Password</label>
+  {{ form.password }}
+  {% if form.password.errors %}<ul class="errors">{% for e in form.password.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+
+  <label class="check">{{ form.confirm }} <span>{{ form.confirm.label }}</span></label>
+  {% if form.confirm.errors %}<ul class="errors"><li>Please confirm you understand.</li></ul>{% endif %}
+
+  <button type="submit" class="danger">Delete my account</button>
+</form>
+<p class="muted">Forgot your password? Use "Forgot password" in the app to reset it first.</p>
+{% endblock %}

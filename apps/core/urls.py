@@ -1,24 +1,18 @@
-# apps/core/urls.py
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from .views import (
-    LocationViewSet,
-    UserLocationViewSet,
-    analyze_instagram_reel,
-    analyze_and_save_reel,
-)
+
+from . import views
 
 app_name = 'core-api'
 
-router = DefaultRouter()
-router.register(r'locations', LocationViewSet, basename='location')
-router.register(r'user-locations', UserLocationViewSet, basename='user-location')
+router = DefaultRouter(trailing_slash=True)
+router.include_root_view = False
+router.register(r'locations', views.SavedLocationViewSet, basename='location')
 
 urlpatterns = [
-    # Router URLs
     path('', include(router.urls)),
-
-    # Instagram Analysis
-    path('analyze-reel/', analyze_instagram_reel, name='analyze-reel'),
-    path('analyze-save-reel/', analyze_and_save_reel, name='analyze-save-reel'),
+    path('categories/', views.categories, name='categories'),
+    path('reels/analyze/', views.analyze_reel, name='analyze-reel'),
+    path('geocode/search/', views.geocode_search, name='geocode-search'),
+    path('geocode/reverse/', views.geocode_reverse, name='geocode-reverse'),
 ]

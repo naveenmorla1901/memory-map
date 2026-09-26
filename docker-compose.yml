@@ -1,0 +1,43 @@
+# Production-like local stack: `docker compose up --build`, then
+# `docker compose exec web python manage.py createsuperuser`.
+# The API is served at http://localhost:8000.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: memorymap
+      POSTGRES_USER: memorymap
+      POSTGRES_PASSWORD: memorymap
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memorymap"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+
+  web:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://memorymap:memorymap@db:5432/memorymap
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-local-compose-secret-change-me}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      DEBUG: "False"
+      SECURE_SSL_REDIRECT: "False"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  pgdata:

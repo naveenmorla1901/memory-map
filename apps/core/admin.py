@@ -1,67 +1,27 @@
-# apps/core/admin.py
 from django.contrib import admin
-from .models import Location, InstagramReelCache, UserLocation
-@admin.register(Location)
-class LocationAdmin(admin.ModelAdmin):
-    list_display = ('name', 'location_type', 'category', 'is_instagram_source', 'created_at')
-    list_filter = ('location_type', 'category', 'is_instagram_source', 'created_at')
-    search_fields = ('name', 'description', 'address')
-    readonly_fields = ('created_at', 'updated_at', 'last_synced')
-    
+
+from .models import InstagramReelCache, SavedLocation
+
+
+@admin.register(SavedLocation)
+class SavedLocationAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'category', 'source', 'is_favorite', 'visited', 'created_at')
+    list_filter = ('category', 'source', 'is_favorite', 'visited', 'notify_enabled')
+    search_fields = ('name', 'address', 'user__username', 'user__email')
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    raw_id_fields = ('user',)
     fieldsets = (
-        ('Basic Information', {
-            'fields': ('name', 'latitude', 'longitude', 'description', 'address')
-        }),
-        ('Classification', {
-            'fields': ('location_type', 'category')
-        }),
-        ('Instagram Data', {
-            'fields': ('is_instagram_source', 'instagram_url', 'date_posted'),
-            'classes': ('collapse',)
-        }),
-        ('Sync Information', {
-            'fields': ('sync_status', 'last_synced', 'firebase_id'),
-            'classes': ('collapse',)
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        })
+        (None, {'fields': ('id', 'user', 'name', 'category', 'description', 'notes')}),
+        ('Place', {'fields': ('latitude', 'longitude', 'address')}),
+        ('Source', {'fields': ('source', 'instagram_url')}),
+        ('Preferences', {'fields': ('is_favorite', 'visited', 'notify_enabled', 'notify_radius_km')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
 
-@admin.register(UserLocation)
-class UserLocationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'location', 'is_favorite', 'notify_enabled', 'saved_at')
-    list_filter = ('is_favorite', 'notify_enabled', 'saved_at')
-    search_fields = ('user__username', 'location__name', 'custom_name')
-    readonly_fields = ('saved_at', 'updated_at', 'last_synced')
-    
-    fieldsets = (
-        ('Relationship', {
-            'fields': ('user', 'location')
-        }),
-        ('Customization', {
-            'fields': ('custom_name', 'custom_description', 'custom_category', 'notes')
-        }),
-        ('Preferences', {
-            'fields': ('is_favorite', 'notify_enabled', 'notify_radius')
-        }),
-        ('Sync Information', {
-            'fields': ('sync_status', 'last_synced', 'firebase_id'),
-            'classes': ('collapse',)
-        }),
-        ('Timestamps', {
-            'fields': ('saved_at', 'updated_at'),
-            'classes': ('collapse',)
-        })
-    )
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('user', 'location')
 
 @admin.register(InstagramReelCache)
 class InstagramReelCacheAdmin(admin.ModelAdmin):
     list_display = ('url', 'status', 'date_posted', 'analyzed_at')
-    list_filter = ('status', 'analyzed_at')
+    list_filter = ('status',)
     search_fields = ('url', 'description')
     readonly_fields = ('analyzed_at', 'created_at')

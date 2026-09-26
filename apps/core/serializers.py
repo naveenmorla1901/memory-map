@@ -1,101 +1,112 @@
-# apps/core/serializers.py
 from rest_framework import serializers
-from .models import Location, UserLocation
 
-class LocationSerializer(serializers.ModelSerializer):
+from .categories import CATEGORY_KEYS, normalize_category
+from .models import SavedLocation
+from .services.reels import canonicalize_reel_url
+
+
+class SavedLocationSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Location
+        model = SavedLocation
         fields = [
-            'id', 'name', 'latitude', 'longitude', 'description',
-            'location_type', 'category', 'address',
-            'is_instagram_source', 'instagram_url', 'date_posted',
-            'sync_status', 'last_synced', 'firebase_id',
-            'created_at', 'updated_at'
+            'id', 'name', 'description', 'notes', 'category',
+            'latitude', 'longitude', 'address',
+            'source', 'instagram_url',
+            'is_favorite', 'visited', 'notify_enabled', 'notify_radius_km',
+            'created_at', 'updated_at',
         ]
-        read_only_fields = [
-            'id', 'created_at', 'updated_at',
-            'sync_status', 'last_synced', 'firebase_id'
-        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'name': {'trim_whitespace': True},
+            'category': {'required': False},
+        }
 
-    def validate(self, data):
-        if data.get('is_instagram_source'):
-            if not data.get('instagram_url'):
-                raise serializers.ValidationError({
-                    'instagram_url': 'Instagram URL is required for Instagram locations'
-                })
-        
-        if 'latitude' in data and 'longitude' in data:
-            if not (-90 <= data['latitude'] <= 90):
-                raise serializers.ValidationError({
-                    'latitude': 'Latitude must be between -90 and 90'
-                })
-            if not (-180 <= data['longitude'] <= 180):
-                raise serializers.ValidationError({
-                    'longitude': 'Longitude must be between -180 and 180'
-                })
-        
-        return data
+    def to_internal_value(self, data):
+        # Be forgiving about category spelling ("Food", "cafe ") rather than
+        # rejecting a whole save over it; unknown values become "other".
+        if hasattr(data, 'copy') and 'category' in data:
+            data = data.copy()
+            data['category'] = normalize_category(data.get('category'))
+        return super().to_internal_value(data)
 
-class UserLocationSerializer(serializers.ModelSerializer):
-    location = LocationSerializer(read_only=True)
-    location_id = serializers.UUIDField(write_only=True)
+    def validate_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError('Name cannot be blank.')
+        return value.strip()
 
-    class Meta:
-        model = UserLocation
-        fields = [
-            'id', 'user', 'location', 'location_id',
-            'custom_name', 'custom_description', 'custom_category',
-            'notes', 'is_favorite', 'notify_enabled', 'notify_radius',
-            'sync_status', 'last_synced', 'firebase_id',
-            'saved_at', 'updated_at'
-        ]
-        read_only_fields = [
-            'id', 'user', 'sync_status', 'last_synced', 'firebase_id',
-            'saved_at', 'updated_at'
-        ]
+    def validate_instagram_url(self, value):
+        # Store one canonical form so "already saved from this reel" checks
+        # match regardless of the share-tracking params in the link.
+        return canonicalize_reel_url(value) if value else value
 
-    def validate_notify_radius(self, value):
-        if value <= 0:
-            raise serializers.ValidationError(
-                'Notification radius must be greater than 0'
-            )
+    def validate(self, attrs):
+        source = attrs.get('source', getattr(self.instance, 'source', SavedLocation.SOURCE_MANUAL))
+        instagram_url = attrs.get('instagram_url', getattr(self.instance, 'instagram_url', ''))
+        if source == SavedLocation.SOURCE_INSTAGRAM and not instagram_url:
+            raise serializers.ValidationError({'instagram_url': 'Required for places saved from Instagram.'})
+        if instagram_url and 'source' not in attrs and self.instance is None:
+            attrs['source'] = SavedLocation.SOURCE_INSTAGRAM
+        return attrs
+
+
+class BulkSavedLocationSerializer(serializers.Serializer):
+    locations = SavedLocationSerializer(many=True)
+
+    def validate_locations(self, value):
+        if not value:
+            raise serializers.ValidationError('Provide at least one location.')
+        if len(value) > 20:
+            raise serializers.ValidationError('At most 20 locations at a time.')
         return value
 
-class LocationAnalysisSerializer(serializers.Serializer):
-    """Serializer for Instagram reel analysis endpoint"""
-    url = serializers.URLField(required=True)
-    locations = LocationSerializer(many=True, read_only=True)
-    likes = serializers.CharField(read_only=True)
-    comments = serializers.CharField(read_only=True)
-    date_posted = serializers.DateTimeField(read_only=True)
+
+class CategorySerializer(serializers.Serializer):
+    key = serializers.ChoiceField(choices=CATEGORY_KEYS)
+    label = serializers.CharField()
+    description = serializers.CharField()
 
 
-class SavedLocationWriteSerializer(serializers.Serializer):
-    """
-    Flat input for creating/updating a saved location in one request: the
-    underlying Location fields plus the current user's UserLocation
-    preferences, combined because the app always edits them together.
-    """
-    name = serializers.CharField(max_length=255)
-    latitude = serializers.FloatField(min_value=-90, max_value=90)
-    longitude = serializers.FloatField(min_value=-180, max_value=180)
-    description = serializers.CharField(required=False, allow_blank=True, default='')
-    category = serializers.CharField(required=False, allow_blank=True, default='')
-    address = serializers.CharField(required=False, allow_blank=True, default='')
-    is_instagram_source = serializers.BooleanField(required=False, default=False)
-    instagram_url = serializers.CharField(required=False, allow_blank=True, default='')
+class LocationStatsSerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    favorites = serializers.IntegerField()
+    visited = serializers.IntegerField()
+    from_instagram = serializers.IntegerField()
+    by_category = serializers.DictField(child=serializers.IntegerField())
 
-    custom_name = serializers.CharField(required=False, allow_blank=True, default='')
-    custom_description = serializers.CharField(required=False, allow_blank=True, default='')
-    custom_category = serializers.CharField(required=False, allow_blank=True, default='')
-    notes = serializers.CharField(required=False, allow_blank=True, default='')
-    is_favorite = serializers.BooleanField(required=False, default=False)
-    notify_enabled = serializers.BooleanField(required=False, default=False)
-    notify_radius = serializers.FloatField(required=False, default=1.0, min_value=0.01)
 
-    def validate(self, data):
-        if data.get('is_instagram_source') and not data.get('instagram_url'):
-            raise serializers.ValidationError({
-                'instagram_url': 'Instagram URL is required for Instagram locations'
-            })
-        return data
+class ReelAnalysisRequestSerializer(serializers.Serializer):
+    url = serializers.URLField(max_length=500)
+
+    def validate_url(self, value):
+        from urllib.parse import urlparse
+        host = (urlparse(value).hostname or '').lower()
+        if host not in ('instagram.com', 'www.instagram.com', 'm.instagram.com', 'instagr.am'):
+            raise serializers.ValidationError('Only Instagram links are supported.')
+        return value
+
+
+class ExtractedPlaceSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    category = serializers.CharField()
+    address = serializers.CharField(allow_blank=True)
+    latitude = serializers.FloatField(allow_null=True)
+    longitude = serializers.FloatField(allow_null=True)
+    confidence = serializers.FloatField()
+    already_saved = serializers.BooleanField()
+
+
+class ReelAnalysisResponseSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=['found', 'manual_required'])
+    url = serializers.URLField()
+    reason = serializers.CharField(required=False)
+    caption = serializers.CharField(required=False, allow_blank=True)
+    places = ExtractedPlaceSerializer(many=True, required=False)
+
+
+class GeocodeResultSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
+    address = serializers.CharField(allow_blank=True)
+    latitude = serializers.FloatField()
+    longitude = serializers.FloatField()
+    category = serializers.CharField()

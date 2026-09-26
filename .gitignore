@@ -1,28 +1,35 @@
-# Environment
+# Environment & secrets
 .env
 .env.*
 !.env.example
+secrets/
+*cookies*.txt
 
 # Python
 __pycache__/
 *.py[cod]
 *.so
+.coverage
+htmlcov/
+.pytest_cache/
 
 # Django
 *.log
+logs/
 db.sqlite3
 media/
 staticfiles/
 
-# IDE
+# Virtualenvs
+venv/
+.venv/
+env/
+
+# Editors / OS
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# Dependencies
-venv/
-env/
-secrets/
-*.json
-!package.json
+.DS_Store
+Thumbs.db
+desktop.ini

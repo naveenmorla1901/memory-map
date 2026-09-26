@@ -1,47 +1,43 @@
-# config/urls.py
-from django.contrib import admin
-from django.urls import path, include
 from django.conf import settings
-from django.conf.urls.static import static
-from drf_yasg.views import get_schema_view
-from drf_yasg import openapi
-from rest_framework import permissions
+from django.contrib import admin
+from django.contrib.auth import views as auth_views
+from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-# Swagger/OpenAPI configuration
-schema_view = get_schema_view(
-    openapi.Info(
-        title="Memory Map API",
-        default_version='v1',
-        description="API documentation for Memory Map project",
-        terms_of_service="https://www.google.com/policies/terms/",
-        contact=openapi.Contact(email="contact@memorymap.com"),
-        license=openapi.License(name="BSD License"),
-    ),
-    public=True,
-    permission_classes=[permissions.AllowAny],
-)
+from apps.core import views as core_views
+from apps.core import web_views
+
+admin.site.site_header = 'Memory Map admin'
+admin.site.site_title = 'Memory Map admin'
 
 urlpatterns = [
-    # Admin URLs
-    path('admin/', admin.site.urls),
-    
-    # Web URLs
-    path('', include(('apps.core.web_urls', 'core'), namespace='core')),
-    
-    # User Web URLs (for templates)
-    path('accounts/', include(('apps.users.web_urls', 'users-web'), namespace='users')),
-    
-    # API URLs
-    path('api/v1/', include([
-        path('auth/', include(('apps.users.api_urls', 'users-api'), namespace='users-api')),
-        path('', include(('apps.core.urls', 'core-api'), namespace='core-api')),
-    ])),
-    
-    # API Documentation
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
-    path('docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('', web_views.landing, name='landing'),
+    path('privacy/', web_views.privacy, name='privacy'),
+    path('terms/', web_views.terms, name='terms'),
+    path('delete-account/', web_views.delete_account, name='delete-account'),
+    path(
+        'reset/<uidb64>/<token>/',
+        auth_views.PasswordResetConfirmView.as_view(
+            template_name='web/password_reset_confirm.html', success_url='/reset/done/'
+        ),
+        name='password_reset_confirm',
+    ),
+    path(
+        'reset/done/',
+        auth_views.PasswordResetCompleteView.as_view(template_name='web/password_reset_complete.html'),
+        name='password_reset_complete',
+    ),
+    path('healthz/', core_views.healthz, name='healthz'),
+    path(settings.ADMIN_URL, admin.site.urls),
+    path('api/v1/auth/', include('apps.users.api_urls')),
+    path('api/v1/', include('apps.core.urls')),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+if settings.API_DOCS_ENABLED:
+    urlpatterns += [
+        path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+        path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='api-docs'),
+    ]
+
+handler404 = 'apps.core.web_views.page_not_found'
+handler500 = 'apps.core.web_views.server_error'

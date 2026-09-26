@@ -1,313 +1,194 @@
-# apps/core/views.py
 import logging
 
-from django.conf import settings
-from django.db.models import Q
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
-from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, permission_classes, action
-from rest_framework.permissions import IsAuthenticated
+from django.db import connection, transaction
+from django.db.models import Count, Q
+from django.http import JsonResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .instagram.analyzer import InstagramExtractionError
-from .models import Location, UserLocation
+from .categories import CATEGORIES
+from .models import SavedLocation
 from .serializers import (
-    LocationAnalysisSerializer,
-    LocationSerializer,
-    SavedLocationWriteSerializer,
-    UserLocationSerializer,
+    BulkSavedLocationSerializer,
+    CategorySerializer,
+    GeocodeResultSerializer,
+    LocationStatsSerializer,
+    ReelAnalysisRequestSerializer,
+    ReelAnalysisResponseSerializer,
+    SavedLocationSerializer,
 )
-from .services.reel_cache import get_reel_analysis
+from .services import geocoding
+from .services.reels import analyze_reel_for_user
+from .throttles import GeocodeThrottle, ReelAnalysisThrottle
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    'LocationViewSet',
-    'UserLocationViewSet',
-    'analyze_instagram_reel',
-    'analyze_and_save_reel',
-]
+TRUTHY = ('1', 'true', 'yes')
+ORDERINGS = {
+    'newest': '-created_at',
+    'oldest': 'created_at',
+    'name': 'name',
+    'updated': '-updated_at',
+}
 
 
-class LocationViewSet(viewsets.ModelViewSet):
-    """The shared catalog of places (name/coordinates/category - not per-user data)."""
-    serializer_class = LocationSerializer
-    permission_classes = [IsAuthenticated]
+@extend_schema(
+    parameters=[
+        OpenApiParameter('category', str, description='Filter by category key'),
+        OpenApiParameter('favorite', bool),
+        OpenApiParameter('visited', bool),
+        OpenApiParameter('search', str, description='Matches name, address, description or notes'),
+        OpenApiParameter('ordering', str, enum=list(ORDERINGS)),
+    ]
+)
+class SavedLocationViewSet(viewsets.ModelViewSet):
+    """The signed-in user's saved places. Every query is scoped to the user."""
+    serializer_class = SavedLocationSerializer
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
-            return Location.objects.none()
+            return SavedLocation.objects.none()
+        queryset = SavedLocation.objects.filter(user=self.request.user)
+        if self.action != 'list':
+            return queryset
 
-        queryset = Location.objects.filter(is_deleted=False)
-
-        category = self.request.query_params.get('category')
-        if category:
-            queryset = queryset.filter(category__iexact=category)
-
-        search = self.request.query_params.get('search')
-        if search:
+        params = self.request.query_params
+        if params.get('category'):
+            queryset = queryset.filter(category=params['category'])
+        if params.get('favorite') is not None:
+            queryset = queryset.filter(is_favorite=params['favorite'].lower() in TRUTHY)
+        if params.get('visited') is not None:
+            queryset = queryset.filter(visited=params['visited'].lower() in TRUTHY)
+        if params.get('search'):
+            term = params['search'].strip()
             queryset = queryset.filter(
-                Q(name__icontains=search) |
-                Q(description__icontains=search) |
-                Q(address__icontains=search)
+                Q(name__icontains=term) | Q(address__icontains=term)
+                | Q(description__icontains=term) | Q(notes__icontains=term)
             )
+        return queryset.order_by(ORDERINGS.get(params.get('ordering'), '-created_at'))
 
-        return queryset
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
-    def perform_destroy(self, instance):
-        instance.soft_delete()
-
-
-class UserLocationViewSet(viewsets.ModelViewSet):
-    """
-    A user's personal saved locations. Reads return the saved location
-    together with its place data (nested `location`); writes accept a flat
-    body covering both, since the app always edits them together.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        if getattr(self, 'swagger_fake_view', False):
-            return UserLocation.objects.none()
-        if not self.request.user.is_authenticated:
-            return UserLocation.objects.none()
-
-        queryset = UserLocation.objects.filter(user=self.request.user).select_related('location')
-
-        is_favorite = self.request.query_params.get('is_favorite')
-        if is_favorite is not None:
-            queryset = queryset.filter(is_favorite=is_favorite.lower() in ('1', 'true', 'yes'))
-
-        return queryset
-
-    def get_serializer_class(self):
-        if self.action in ('create', 'update', 'partial_update'):
-            return SavedLocationWriteSerializer
-        return UserLocationSerializer
-
-    @swagger_auto_schema(
-        operation_description="List the current user's saved locations, with their custom preferences.",
-        manual_parameters=[
-            openapi.Parameter(
-                'is_favorite', openapi.IN_QUERY,
-                description="Filter to favorite locations",
-                type=openapi.TYPE_BOOLEAN, required=False
-            )
-        ],
-    )
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    def create(self, request, *args, **kwargs):
-        serializer = SavedLocationWriteSerializer(data=request.data)
+    @extend_schema(request=BulkSavedLocationSerializer, responses={201: SavedLocationSerializer(many=True)})
+    @action(detail=False, methods=['post'])
+    def bulk(self, request):
+        """Save several places at once (e.g. every place found in one reel)."""
+        serializer = BulkSavedLocationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user_location = self._create_saved_location(request.user, serializer.validated_data)
-        return Response(UserLocationSerializer(user_location).data, status=status.HTTP_201_CREATED)
+        with transaction.atomic():
+            created = [
+                SavedLocation.objects.create(user=request.user, **item)
+                for item in serializer.validated_data['locations']
+            ]
+        return Response(SavedLocationSerializer(created, many=True).data, status=status.HTTP_201_CREATED)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = SavedLocationWriteSerializer(data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        user_location = self._apply_saved_location_update(instance, serializer.validated_data)
-        return Response(UserLocationSerializer(user_location).data)
-
-    @staticmethod
-    def _create_saved_location(user, data):
-        location = Location.objects.create(
-            name=data['name'],
-            latitude=data['latitude'],
-            longitude=data['longitude'],
-            description=data.get('description', ''),
-            category=data.get('category') or 'uncategorized',
-            address=data.get('address', ''),
-            is_instagram_source=data.get('is_instagram_source', False),
-            instagram_url=data.get('instagram_url', ''),
-        )
-        return UserLocation.objects.create(
-            user=user,
-            location=location,
-            custom_name=data.get('custom_name', ''),
-            custom_description=data.get('custom_description', ''),
-            custom_category=data.get('custom_category', ''),
-            notes=data.get('notes', ''),
-            is_favorite=data.get('is_favorite', False),
-            notify_enabled=data.get('notify_enabled', False),
-            notify_radius=data.get('notify_radius', 1.0),
-        )
-
-    @staticmethod
-    def _apply_saved_location_update(user_location, data):
-        location = user_location.location
-        for field in ('name', 'latitude', 'longitude', 'description', 'category', 'address',
-                      'is_instagram_source', 'instagram_url'):
-            if field in data:
-                setattr(location, field, data[field])
-        location.save()
-
-        for field in ('custom_name', 'custom_description', 'custom_category', 'notes',
-                      'is_favorite', 'notify_enabled', 'notify_radius'):
-            if field in data:
-                setattr(user_location, field, data[field])
-        user_location.save()
-        return user_location
-
+    @extend_schema(responses=LocationStatsSerializer)
     @action(detail=False, methods=['get'])
-    def favorites(self, request):
-        queryset = self.get_queryset().filter(is_favorite=True)
-        serializer = UserLocationSerializer(queryset, many=True)
-        return Response(serializer.data)
+    def stats(self, request):
+        queryset = SavedLocation.objects.filter(user=request.user)
+        totals = queryset.aggregate(
+            total=Count('id'),
+            favorites=Count('id', filter=Q(is_favorite=True)),
+            visited=Count('id', filter=Q(visited=True)),
+            from_instagram=Count('id', filter=Q(source=SavedLocation.SOURCE_INSTAGRAM)),
+        )
+        by_category = dict(queryset.values_list('category').annotate(count=Count('id')).order_by())
+        return Response({**totals, 'by_category': by_category})
 
 
-@swagger_auto_schema(
-    method='post',
-    operation_description=(
-        "Analyze an Instagram reel URL and extract locations without saving them. "
-        "If the URL was already analyzed, returns the previously saved locations instead."
-    ),
-    request_body=openapi.Schema(
-        type=openapi.TYPE_OBJECT,
-        required=['url'],
-        properties={'url': openapi.Schema(type=openapi.TYPE_STRING, description='Instagram reel URL')},
-    ),
-    responses={200: 'Success', 400: 'Bad Request - invalid URL or parsing error'},
-)
+@extend_schema(responses=CategorySerializer(many=True))
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def categories(request):
+    return Response([
+        {'key': key, 'label': label, 'description': description}
+        for key, label, description in CATEGORIES
+    ])
+
+
+@extend_schema(request=ReelAnalysisRequestSerializer, responses=ReelAnalysisResponseSerializer)
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def analyze_instagram_reel(request):
-    serializer = LocationAnalysisSerializer(data=request.data)
+@throttle_classes([ReelAnalysisThrottle])
+def analyze_reel(request):
+    """
+    Find the places an Instagram reel's caption mentions. A reel that can't
+    be read (private, blocked, no caption, no place named) is a normal
+    `manual_required` response rather than an error, so the app can move
+    straight to manual search.
+    """
+    serializer = ReelAnalysisRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    url = serializer.validated_data['url']
+    return Response(analyze_reel_for_user(serializer.validated_data['url'], request.user))
 
-    existing = Location.objects.filter(instagram_url=url, is_deleted=False)
-    if existing.exists():
-        return Response({
-            'status': 'existing',
-            'locations': LocationSerializer(existing, many=True).data,
-        })
 
+
+def _coordinate(value, low, high):
     try:
-        analysis = get_reel_analysis(url, settings.GOOGLE_API_KEY, settings.INSTAGRAM_YTDLP_COOKIES_FILE or None)
-    except InstagramExtractionError as e:
-        # Expected outcome, not a bug: the caption couldn't be read, so the
-        # client should fall back to letting the user pick a location manually.
-        return Response({'status': 'manual_required', 'url': url, 'reason': e.reason})
-    except Exception as e:
-        logger.error(f"Instagram analysis error: {e}", exc_info=True)
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-    if not analysis['locations']:
-        return Response({
-            'status': 'manual_required',
-            'url': url,
-            'reason': 'Read the caption but could not identify any specific locations in it.',
-        })
-
-    return Response({
-        'status': 'new',
-        'locations': analysis['locations'],
-        'url': url,
-        'metadata': {
-            'date_posted': analysis['date_posted'],
-            'description': analysis['description'],
-        },
-    })
-
-
-@swagger_auto_schema(
-    method='post',
-    operation_description="Analyze an Instagram reel URL and immediately save all extracted locations for the current user.",
-    request_body=openapi.Schema(
-        type=openapi.TYPE_OBJECT,
-        required=['url'],
-        properties={
-            'url': openapi.Schema(type=openapi.TYPE_STRING, description='Instagram reel URL'),
-            'category': openapi.Schema(type=openapi.TYPE_STRING, description='Default category for all locations'),
-            'is_favorite': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Mark all locations as favorite'),
-            'notify_radius': openapi.Schema(type=openapi.TYPE_NUMBER, description='Notification radius in km'),
-        },
-    ),
-    responses={200: 'Success', 400: 'Bad Request - invalid URL, parsing error, or nothing to save'},
-)
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def analyze_and_save_reel(request):
-    url = request.data.get('url')
-    if not url:
-        return Response({'error': 'URL is required'}, status=status.HTTP_400_BAD_REQUEST)
-
-    category = request.data.get('category', 'uncategorized')
-    is_favorite = bool(request.data.get('is_favorite', False))
-    try:
-        notify_radius = float(request.data.get('notify_radius', 1.0))
+        number = float(value)
     except (TypeError, ValueError):
-        notify_radius = 1.0
+        return None
+    return number if low <= number <= high else None
 
-    existing = Location.objects.filter(instagram_url=url, is_deleted=False)
-    if existing.exists():
-        saved = []
-        for location in existing:
-            user_location, _ = UserLocation.objects.get_or_create(
-                user=request.user, location=location,
-                defaults={'is_favorite': is_favorite, 'notify_radius': notify_radius},
-            )
-            saved.append(UserLocationSerializer(user_location).data)
-        return Response({
-            'status': 'existing',
-            'saved_locations': saved,
-            'metadata': {'total_saved': len(saved), 'instagram_url': url},
-        })
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('q', str, required=True),
+        OpenApiParameter('lat', OpenApiTypes.FLOAT, description='Bias results toward this point'),
+        OpenApiParameter('lon', OpenApiTypes.FLOAT),
+    ],
+    responses=GeocodeResultSerializer(many=True),
+)
+@api_view(['GET'])
+@throttle_classes([GeocodeThrottle])
+def geocode_search(request):
+    query = request.query_params.get('q', '')
+    lat = _coordinate(request.query_params.get('lat'), -90, 90)
+    lon = _coordinate(request.query_params.get('lon'), -180, 180)
+    near = (lat, lon) if lat is not None and lon is not None else None
     try:
-        analysis = get_reel_analysis(url, settings.GOOGLE_API_KEY, settings.INSTAGRAM_YTDLP_COOKIES_FILE or None)
-    except InstagramExtractionError as e:
-        return Response({'status': 'manual_required', 'url': url, 'reason': e.reason})
-    except Exception as e:
-        logger.error(f"Instagram analysis error: {e}", exc_info=True)
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(geocoding.search(query, near=near))
+    except geocoding.GeocodingError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-    if not analysis['locations']:
-        return Response({
-            'status': 'manual_required',
-            'url': url,
-            'reason': 'Read the caption but could not identify any specific locations in it.',
-        })
 
-    saved = []
-    for loc in analysis['locations']:
-        if not isinstance(loc, dict):
-            continue
-        coordinates = loc.get('coordinates') or {}
-        latitude, longitude = coordinates.get('latitude'), coordinates.get('longitude')
-        if latitude is None or longitude is None:
-            logger.warning(f"Skipping location without coordinates: {loc.get('name')}")
-            continue
 
-        location = Location.objects.create(
-            name=loc.get('name', 'Unnamed Location'),
-            latitude=latitude,
-            longitude=longitude,
-            description=analysis.get('description', ''),
-            category=loc.get('category') or category,
-            address=loc.get('name', ''),
-            is_instagram_source=True,
-            instagram_url=url,
-            date_posted=analysis['date_posted'],
-        )
-        user_location = UserLocation.objects.create(
-            user=request.user,
-            location=location,
-            is_favorite=is_favorite,
-            notify_radius=notify_radius,
-        )
-        saved.append(UserLocationSerializer(user_location).data)
+@extend_schema(
+    parameters=[
+        OpenApiParameter('lat', OpenApiTypes.FLOAT, required=True),
+        OpenApiParameter('lon', OpenApiTypes.FLOAT, required=True),
+    ],
+    responses=GeocodeResultSerializer,
+)
+@api_view(['GET'])
+@throttle_classes([GeocodeThrottle])
+def geocode_reverse(request):
+    lat = _coordinate(request.query_params.get('lat'), -90, 90)
+    lon = _coordinate(request.query_params.get('lon'), -180, 180)
+    if lat is None or lon is None:
+        return Response({'detail': 'Valid lat and lon are required.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        result = geocoding.reverse(lat, lon)
+    except geocoding.GeocodingError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    if not result:
+        # Middle of the ocean, say - still a valid place to drop a pin.
+        result = {'id': f'{lat},{lon}', 'name': 'Dropped pin', 'address': '',
+                  'latitude': lat, 'longitude': lon, 'category': 'other'}
+    return Response(result)
 
-    if not saved:
-        return Response({'error': 'No valid locations to save'}, status=status.HTTP_400_BAD_REQUEST)
 
-    return Response({
-        'status': 'saved',
-        'saved_locations': saved,
-        'metadata': {'total_saved': len(saved), 'instagram_url': url},
-    })
+
+def healthz(request):
+    """Liveness/readiness probe for the hosting platform."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+    except Exception:
+        logger.exception('Health check database query failed')
+        return JsonResponse({'status': 'error', 'database': 'unreachable'}, status=503)
+    return JsonResponse({'status': 'ok'})
