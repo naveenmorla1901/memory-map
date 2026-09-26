@@ -193,6 +193,19 @@ class AnalyzeReelAPITests(TestCase):
         SavedLocation.objects.create(user=self.user, name='el huequito', latitude=1, longitude=1, instagram_url=URL)
         self.assertTrue(self.post().data['places'][0]['already_saved'])
 
+    def test_same_place_saved_from_elsewhere_counts_as_saved(self, fetcher_cls, extractor_cls, search):
+        fetcher_cls.return_value.fetch.return_value = FETCHED
+        extractor_cls.return_value.extract.return_value = EXTRACTED
+        # Saved manually, a few meters from the geocoded point.
+        SavedLocation.objects.create(user=self.user, name='El Huequito', latitude=19.4301, longitude=-99.1402)
+        self.assertTrue(self.post().data['places'][0]['already_saved'])
+
+    def test_same_name_elsewhere_is_not_the_same_place(self, fetcher_cls, extractor_cls, search):
+        fetcher_cls.return_value.fetch.return_value = FETCHED
+        extractor_cls.return_value.extract.return_value = EXTRACTED
+        SavedLocation.objects.create(user=self.user, name='El Huequito', latitude=40.0, longitude=-3.7)  # A branch in Madrid.
+        self.assertFalse(self.post().data['places'][0]['already_saved'])
+
     def test_unreadable_reel_is_manual_required_not_error(self, fetcher_cls, extractor_cls, search):
         fetcher_cls.return_value.fetch.side_effect = InstagramExtractionError('private')
         response = self.post()

@@ -12,6 +12,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 
 from ..instagram.analyzer import InstagramExtractionError, PlaceExtractor, ReelCaptionFetcher
@@ -132,10 +133,38 @@ def analyze_reel_for_user(url: str, user) -> dict:
         return {'status': 'manual_required', 'url': canonical, 'caption': result['caption'],
                 'reason': "We read the caption but couldn't spot a specific place in it."}
 
-    saved_names = {
-        name.lower() for name in SavedLocation.objects
-        .filter(user=user, instagram_url=canonical)
-        .values_list('name', flat=True)
-    }
-    places = [{**place, 'already_saved': place['name'].lower() in saved_names} for place in result['places']]
+    places = [{**place, 'already_saved': is_saved} for place, is_saved in zip(result['places'], _already_saved(user, canonical, result['places']))]
     return {'status': 'found', 'url': canonical, 'caption': result['caption'], 'places': places}
+
+
+# About 300m: the same name this close is the same place, whichever reel it came from.
+SAME_PLACE_DEGREES = 0.003
+
+
+def _already_saved(user, reel_url: str, places: list) -> list:
+    """
+    Whether the user already has each place: saved from this reel, or saved
+    any other way under the same name at (nearly) the same spot - so sharing
+    a second reel about a place doesn't create a duplicate.
+    """
+    names = Q()
+    for place in places:
+        names |= Q(name__iexact=place['name'])
+    saved = list(
+        SavedLocation.objects.filter(names, user=user).values_list('name', 'latitude', 'longitude', 'instagram_url')
+    ) if places else []
+
+    def matches(place):
+        for name, latitude, longitude, url in saved:
+            if name.lower() != place['name'].lower():
+                continue
+            if url == reel_url:
+                return True
+            if place['latitude'] is not None and (
+                abs(latitude - place['latitude']) < SAME_PLACE_DEGREES
+                and abs(longitude - place['longitude']) < SAME_PLACE_DEGREES
+            ):
+                return True
+        return False
+
+    return [matches(place) for place in places]
