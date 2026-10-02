@@ -5,6 +5,8 @@ Instagram reel to the app, it finds the places the reel mentions, and you save t
 
 Django 5.2 LTS · Django REST Framework · JWT auth · Postgres · yt-dlp · Gemini · Photon (OpenStreetMap)
 
+> **To host this and run the app on your phone, follow [DEVELOPER_GUIDE.md](https://github.com/naveenmorla1901/memory-map-v0/blob/claude/frontend-rewrite-v0-9rkjdj/DEVELOPER_GUIDE.md)** in the app repo. One-click hosting: `render.yaml`.
+
 ## What it does
 
 - **Accounts** - sign up with name/email/password, email-or-username login, JWT access + rotating

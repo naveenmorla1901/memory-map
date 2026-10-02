@@ -101,6 +101,13 @@ class PlaceExtractorTests(TestCase):
         self.assertEqual(PlaceExtractor('key', 'm').extract('caption'), [])
 
     @patch('apps.core.instagram.analyzer.genai.Client')
+    def test_retired_model_falls_back_to_latest_alias(self, mock_client_cls):
+        generate = mock_client_cls.return_value.models.generate_content
+        generate.side_effect = [Exception('404 NOT_FOUND: models/gemini-old is not found'), MagicMock(text='[{"name": "Louvre", "category": "culture", "confidence": 0.9}]')]
+        self.assertEqual([p['name'] for p in PlaceExtractor('key', 'gemini-old').extract('caption')], ['Louvre'])
+        self.assertEqual(generate.call_args.kwargs['model'], PlaceExtractor.FALLBACK_MODEL)
+
+    @patch('apps.core.instagram.analyzer.genai.Client')
     def test_missing_api_key_skips_extraction_without_crashing(self, mock_client_cls):
         self.assertEqual(PlaceExtractor('', 'm').extract('caption'), [])
         mock_client_cls.assert_not_called()

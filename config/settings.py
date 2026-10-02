@@ -37,11 +37,12 @@ if not SECRET_KEY:
         raise ImproperlyConfigured('SECRET_KEY must be set when DEBUG is off.')
     SECRET_KEY = 'django-insecure-development-only-key-do-not-use-in-production'
 
-ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', '*' if DEBUG else '')
+ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', '*' if DEBUG else '') + [h for h in [os.getenv('RENDER_EXTERNAL_HOSTNAME', '')] if h]
 
 # Public base URL of this server, used to build absolute links in emails
 # (password reset) and the web pages. No trailing slash.
-PUBLIC_BASE_URL = os.getenv('PUBLIC_BASE_URL', 'http://localhost:8002').rstrip('/')
+# On Render, the service's own URL/hostname are provided automatically.
+PUBLIC_BASE_URL = (os.getenv('PUBLIC_BASE_URL') or os.getenv('RENDER_EXTERNAL_URL') or 'http://localhost:8002').rstrip('/')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -226,7 +227,8 @@ if EMAIL_HOST:
     EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Memory Map <no-reply@memorymap.local>')
+# Gmail only sends as the signed-in account, so default to it.
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL') or (f"Memory Map <{os.getenv('EMAIL_HOST_USER')}>" if os.getenv('EMAIL_HOST_USER') else 'Memory Map <no-reply@memorymap.local>')
 SUPPORT_EMAIL = os.getenv('SUPPORT_EMAIL', 'support@memorymap.local')
 
 # --- Static files -------------------------------------------------------
@@ -258,7 +260,7 @@ ADMIN_URL = os.getenv('ADMIN_URL', 'admin/').strip('/') + '/'
 # Gemini API key for extracting places from reel captions. Optional - without
 # it, reel analysis falls back to "pick the place manually".
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')  # falls back to gemini-flash-latest if retired
 
 # Set to false to turn off reel analysis entirely (e.g. while you evaluate
 # Instagram's terms for your deployment) - the share flow then goes straight

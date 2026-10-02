@@ -117,6 +117,13 @@ Caption:
         },
     }
 
+    FALLBACK_MODEL = 'gemini-flash-latest'
+
+    @staticmethod
+    def _is_missing_model(error: Exception) -> bool:
+        text = str(error).lower()
+        return getattr(error, 'code', None) == 404 or 'not found' in text or 'not supported' in text
+
     def __init__(self, api_key: str, model: str):
         # genai.Client raises on an empty key; the key is optional, so a
         # missing one means "never extract", not a crash.
@@ -135,17 +142,23 @@ Caption:
         if not self.client:
             logger.info('GOOGLE_API_KEY is not configured - skipping place extraction.')
             return []
+        config = types.GenerateContentConfig(
+            system_instruction=self.SYSTEM_INSTRUCTION,
+            temperature=0.0,
+            response_mime_type='application/json',
+            response_schema=self.RESPONSE_SCHEMA,
+        )
+        prompt = self.build_prompt(caption, uploader)
         try:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=self.build_prompt(caption, uploader),
-                config=types.GenerateContentConfig(
-                    system_instruction=self.SYSTEM_INSTRUCTION,
-                    temperature=0.0,
-                    response_mime_type='application/json',
-                    response_schema=self.RESPONSE_SCHEMA,
-                ),
-            )
+            try:
+                response = self.client.models.generate_content(model=self.model, contents=prompt, config=config)
+            except Exception as e:
+                # Google retires model names over time; don't let that silently
+                # break extraction - fall back to the always-current alias.
+                if self.model == self.FALLBACK_MODEL or not self._is_missing_model(e):
+                    raise
+                logger.warning('Gemini model %s unavailable (%s); using %s', self.model, e, self.FALLBACK_MODEL)
+                response = self.client.models.generate_content(model=self.FALLBACK_MODEL, contents=prompt, config=config)
             raw = json.loads(response.text) if response.text else []
         except json.JSONDecodeError as e:
             logger.error('Gemini returned non-JSON output: %s', e)
